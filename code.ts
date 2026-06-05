@@ -1,3 +1,59 @@
+const project: Project = {
+    raw: [null!],
+    res: [null!],
+    asset: [null!],
+    item: [null!],
+    track: [null!],
+    settings: {},
+}
+
+interface Project {
+    raw: Raw[]
+    res: Resource[]
+    asset: Asset[]
+    item: Item[]
+    track: Track[],
+    settings: Settings
+}
+
+function raw_create(file: File) {
+    let raw: Raw = { file, type: raw_type(file), name: file.name }
+    project.raw.push(raw)
+    return raw
+}
+
+function res_create(raw: Raw) {
+    let res: Resource
+    switch (raw.type) {
+        case RawType.Video: return video_create(raw.file)
+        case RawType.Image: return image_create(raw.file)
+        case RawType.Audio: return audio_create(raw.file)
+        default: return null
+    }
+}
+
+function asset_create(res: Resource) {
+
+}
+
+
+//tracks are a UX
+const enum TrackType { Video, Image, Audio, Text }
+interface Track {
+    id: int
+    name: string
+    type: TrackType
+    layer: int
+}
+
+interface Timeline {
+    items: Item[]
+}
+
+interface Settings {
+
+}
+
 
 type int = number
 type float = number
@@ -31,6 +87,8 @@ function init() {
 
 function main() {
     init()
+
+    ui_init()
 
     ctx.fillStyle = 'black'
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -98,6 +156,7 @@ function animate_for(time: float, f: (t: float) => void, tween = Tween.Linear): 
 interface Item {
     start: float
     end: float
+    track: int
 }
 
 interface VisualItem extends Item {

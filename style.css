@@ -2,3 +2,18 @@
 #tracks{width: 800px; display: flex; flex-direction: column; padding: 4px; align-items: center;gap: 8;}
 .track {border: 2px solid black; }
 body{display: flex; padding: 8px; margin: 0; flex-direction: column; align-items: center;}
+
+#ui {display: flex; border: 1px black solid; width: 100%; min-height: 800px; padding: 8px; box-sizing: border-box;}
+
+
+
+button {background: linear-gradient(#3b82f6, #2563eb); color: white; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.15), inset 0 1px rgba(255,255,255,0.2); cursor: pointer; transition: 0.1s; font-size: 16px; height: 24px; box-sizing: content-box; padding: 4px;}
+button:hover {background: linear-gradient(#60a5fa, #3b82f6);}
+button:active {background: linear-gradient(#2563eb, #1d4ed8); box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);}
+button img {width: 24px; height: 24px; filter: brightness(0) invert(1);}
+img {width: 24px; height: 24px;}
+
+
+.drag {background-color: #000; width: 24px; height: 24px;}
+.drop {background-color: #1d4ed8; width: 24px; height: 24px;}
+.drop.hover {background-color: aqua;}

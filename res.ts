@@ -1,4 +1,16 @@
 
+
+interface Image {
+    bitmap: ImageBitmap
+    width: int
+    height: int
+}
+
+interface Frame {
+    frame: number
+    bitmap: ImageBitmap | null
+}
+
 interface Video {
     width: int
     height: int
@@ -47,15 +59,9 @@ async function audio_create(file: File) {
     return aud
 }
 
-interface Image {
-    bitmap: ImageBitmap
-    width: int
-    height: int
-}
-
-interface Frame {
-    frame: number
-    bitmap: ImageBitmap | null
+async function image_create(file: File): Promise<Image> {
+    const bitmap = await createImageBitmap(file)
+    return { bitmap, width: bitmap.width, height: bitmap.height }
 }
 
 
@@ -77,3 +83,42 @@ async function video_seek(video: HTMLVideoElement, time: number) {
         video.currentTime = time
     })
 }
+
+const enum RawType { Unknown, Image, Video, Audio }
+function raw_type(f: File) {
+    if (f.type.startsWith("image/"))
+        return RawType.Image
+    else if (f.type.startsWith("video/"))
+        return RawType.Video
+    else if (f.type.startsWith("audio/"))
+        return RawType.Audio
+    return RawType.Unknown
+}
+
+type ID = int
+
+interface Raw {
+    type: RawType
+    file: File
+    name: string
+}
+
+interface Resource {
+    raw: ID | null
+}
+
+interface Asset {
+    res: ID
+    name: string
+}
+
+
+// class Resources {
+//     images: Image[] = []
+//     videos: Video[] = []
+//     audios: Audio[] = []
+
+//     add_image(image: Image) { }
+//     add_video(video: Video) { }
+//     add_audio(audio: Audio) { }
+// }
