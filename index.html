@@ -4,7 +4,14 @@
 
 <body>
     <canvas id="main" width="800" height="600"></canvas>
-    <input id="file" type="file">
+    <div id="tracks">
+        <div class="track"><canvas width="768" height="64" id="track_video"></canvas></div>
+        <!-- <div class="track"><canvas width="512" height="64"></canvas></div> -->
+    </div>
+    <div id="file_area">
+        <input id="file" type="file">
+        <label id="file_label"></label>
+    </div>
     <script>main()</script>
 </body>
 
