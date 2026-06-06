@@ -8,8 +8,21 @@
         <!-- <div class="track"><canvas width="512" height="64"></canvas></div> -->
     </div>
     <div id="file_area">
-        <input id="file" type="file">
         <label id="file_label"></label>
+    </div>
+
+    <div class="panel">
+        <input id="file" type="file" hidden multiple>
+        <header>
+            <span>Assets</span>
+            <button id="add_asset"><img src="svg/add.svg" /></button>
+        </header>
+        <div id="assets" class="container">
+            <div class="asset">
+                <canvas class="thumb"></canvas>
+                <div class="name">hi there </div>
+            </div>
+        </div>
     </div>
 
     <div id="ui">
@@ -24,7 +37,7 @@
     </div>
 
 
-    <script src="code.js"></script>
+    <script src="script.js"></script>
 
 
 
