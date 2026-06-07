@@ -1,9 +1,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 
-<body>
-    <canvas id="main" width="800" height="600"></canvas>
-    <div id="tracks">
+<body data-theme="dark">
+    <div id="preview" class="panel">
+        <canvas id="main" width="800" height="600"></canvas>
+        <div id="playback">
+            <button><img src="svg/prev.svg" /></button>
+            <button><img src="svg/play.svg" /></button>
+            <button><img src="svg/next.svg" /></button>
+        </div>
+    </div>
+    <div id="tracks" class="panel">
         <div class="track"><canvas width="768" height="64" id="track_video"></canvas></div>
         <!-- <div class="track"><canvas width="512" height="64"></canvas></div> -->
     </div>
@@ -14,8 +21,19 @@
     <div class="panel">
         <input id="file" type="file" hidden multiple>
         <header>
-            <span>Assets</span>
             <button id="add_asset"><img src="svg/add.svg" /></button>
+            <span>Assets</span>
+            <div>
+                <label>sort by</label>
+                <select id="assets_order" onchange="ui_assets_orderby(this, event)">
+                    <option value="0">name</option>
+                    <option value="1">type</option>
+                    <option value="2">date</option>
+                </select>
+
+                <label>Desc</label>
+                <input type="checkbox" onchange="ui_assets_orderdesc(this, event)">
+            </div>
         </header>
         <div id="assets" class="container">
             <div class="asset">
@@ -34,6 +52,12 @@
         <div id="t-drop" class="drop"></div>
 
         <div class=""></div>
+
+        <select>
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+        </select>
     </div>
 
 

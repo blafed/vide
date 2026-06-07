@@ -8,47 +8,11 @@ interface Project {
     asset: Asset[]
 }
 
-const enum ResType {
-    Unknown,
-    Video, Audio, Image
-}
-
-type Res = VideoRes | AudioRes | ImageRes;
-
-interface Resource {
-    type: ResType
-    file: File
-}
-
-interface VideoRes extends Resource {
-    width: int
-    height: int
-    frames: (ImageBitmap | null)[]
-    fps: int
-    duration: float
-    el: HTMLVideoElement
-    audio: AudioRes | null
-}
-
-
-interface AudioRes extends Resource {
-    srate: int
-    channels: int
-    length: int
-    duration: float
-    buffer: AudioBuffer
-}
-
-interface ImageRes extends Resource {
-    bitmap: ImageBitmap
-    width: int
-    height: int
-}
-
 interface Asset {
     name: string
     res: Res
     thumb: ImageBitmap
+    date: number
 }
 
 

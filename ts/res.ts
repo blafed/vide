@@ -1,12 +1,61 @@
 
+const enum ResType {
+    Unknown, Video, Audio, Image, Svg
+}
 
-function res_type(f: File) {
-    if (f.type.startsWith("image/"))
-        return ResType.Image
-    else if (f.type.startsWith("video/"))
-        return ResType.Video
-    else if (f.type.startsWith("audio/"))
-        return ResType.Audio
+type Res = VideoRes | AudioRes | ImageRes | SvgRes;
+
+interface Resource {
+    type: ResType
+    file: File
+}
+
+interface VideoRes extends Resource {
+    type: ResType.Video
+    width: int
+    height: int
+    frames: (ImageBitmap | null)[]
+    fps: int
+    duration: float
+    el: HTMLVideoElement
+    audio: AudioRes | null
+}
+
+
+interface AudioRes extends Resource {
+    type: ResType.Audio
+    srate: int
+    channels: int
+    length: int
+    duration: float
+    buffer: AudioBuffer
+}
+
+interface ImageRes extends Resource {
+    type: ResType.Image
+    bitmap: ImageBitmap
+    width: int
+    height: int
+}
+
+interface SvgRes extends Resource {
+    type: ResType.Svg
+    bitmap: ImageBitmap
+    width: int
+    height: int
+    svg: string
+    dataurl: string
+    el: HTMLImageElement
+}
+
+function res_type(f: File): ResType {
+    const t = f.type
+
+    if (t.startsWith("video/")) return ResType.Video
+    if (t.startsWith("audio/")) return ResType.Audio
+    if (t === "image/svg+xml") return ResType.Svg
+    if (t.startsWith("image/")) return ResType.Image
+
     return ResType.Unknown
 }
 
@@ -26,7 +75,8 @@ async function res_create_video(f: File, fps: int) {
 
     let v: VideoRes = {
         type: ResType.Video, file: f,
-        frames: frames, width: el.videoWidth, height: el.videoHeight, fps: fps, duration: el.duration, el: el
+        frames: frames, width: el.videoWidth, height: el.videoHeight, fps: fps, duration: el.duration, el: el,
+        audio: await res_create_audio(f)
     }
     return v
 }
@@ -153,4 +203,31 @@ function audio_draw_frames(aud: AudioRes, ctx: CanvasRenderingContext2D, from: f
     }
 
     ctx.stroke()
+}
+
+async function res_svg_create(f: File, width: int, height: int) {
+    let svg = await f.text()
+    let el = new Image()
+    let blob = new Blob([svg], { type: "image/svg+xml" })
+    let dataurl = URL.createObjectURL(blob)
+    let s: SvgRes = { type: ResType.Svg, file: f, bitmap: null!, dataurl, el, svg, width, height }
+    await svg_raster_over(s, width, height)
+    return s
+}
+
+async function svg_raster(svg: SvgRes, width: int, height: int) {
+    if (svg.bitmap && width == svg.width && height == svg.height)
+        return svg.bitmap
+    svg.el.width = width
+    svg.el.height = height
+    svg.el.src = svg.dataurl
+    await svg.el.decode()
+    return await createImageBitmap(svg.el)
+}
+
+async function svg_raster_over(svg: SvgRes, width: int, height: int) {
+    if (svg.bitmap && svg.bitmap.width == width && svg.bitmap.height == height)
+        return
+    svg.bitmap?.close()
+    svg.bitmap = await svg_raster(svg, width, height)
 }

@@ -43,17 +43,22 @@ const ui = {
     add_asset: getbyid('add_asset'),
     file_input: <HTMLInputElement>getbyid('file'),
     assets: getbyid('assets'),
-    components: <Record<string, any>>{}
+    assets_order: <HTMLSelectElement>getbyid('assets_order'),
+    components: <Record<string, any>>{},
+    requested_update: false
 }
 
 function ui_init() {
+    prevent_select(document.body)
     ui.file_input.oninput = () => {
         if (ui.file_input.files)
             for (let f of ui.file_input.files)
                 editor_import(f)
         ui.file_input.value = ''
     }
-    ui.add_asset.onclick = () => ui.file_input.click()
+
+    ui.assets.onclick = (ev) => { if (ev.target == ui.assets) editor_unselect_assets() }
+    ui.add_asset.onclick = editor_open_add_asset
     ui.assets.ondragover = (ev) => {
         ui.assets.classList.add('high')
         prevent_default(ev)
@@ -68,8 +73,18 @@ function ui_init() {
     }
 }
 
+function ui_request() {
+    if (ui.requested_update)
+        return
+    ui.requested_update = true
+    requestAnimationFrame(() => {
+        ui_update()
+        ui.requested_update = false
+    })
+}
+
 function ui_update() {
-    ui_update_array(ui.assets, project.asset, ui_render_asset)
+    ui_update_array(ui.assets, editor.assets.items, ui_render_asset)
     for (let x of sel.asset) {
         ui_high_asset(x, true)
     }
@@ -99,11 +114,13 @@ function ui_render_asset(a: Asset, el: HTMLElement) {
     let name = getbyclass('name', el)[0]
     name.innerText = a.name
     let canv = getbyclass('thumb', el)[0] as HTMLCanvasElement
-    canv.getContext('2d')?.drawImage(a.thumb, 0, 0, canv.width, canv.height)
-    el.onclick = () => editor_toggle_select_asset(a)
+    let ctx = canv.getContext('2d')!
+    ctx.clearRect(0, 0, canv.width, canv.height)
+    ctx.drawImage(a.thumb, 0, 0, canv.width, canv.height)
+    el.onclick = ui_asset_click
     prevent_select(el)
     component_set(el, 'asset', a)
-    // getbytag('canvas', el)[0]
+    el.classList.remove('high')
 }
 
 function ui_asset_element(a: Asset) {
@@ -119,4 +136,18 @@ function ui_high_asset(a: Asset, on: boolean) {
     if (el == null) return
     if (on) el.classList.add('high')
     else el.classList.remove('high')
+}
+
+function ui_asset_click(ev: PointerEvent) {
+    const ass = component_get<Asset>(ev.target as Element, 'asset')
+    if (!ass) return
+    editor_select_asset(ass)
+}
+
+function ui_assets_orderby(sel: HTMLSelectElement, ev: Event) {
+    editor_assets_order_by(parseInt(sel.value))
+}
+
+function ui_assets_orderdesc(sel: HTMLInputElement, ev: Event) {
+    editor_assets_order_desc(sel.checked)
 }
