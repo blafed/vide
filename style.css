@@ -27,8 +27,10 @@ header {display: flex; justify-content: space-evenly; width: 100%;}
 #assets {height: 256px; width: 800px; display: flex; }
 #assets.high {background-color: #eee;}
 /* .container > :first-child  {display: none;} */
-.asset {width: 64px; height: 64px; box-shadow: 2px 2px rgba(0,0,0,0.15); text-align: center; text-wrap-mode: ;}
+.asset {width: 64px; height: 64px; box-shadow: 2px 2px rgba(0,0,0,0.15); text-align: center; padding: 2px;}
 /* .asset{display: flex; align-items: center; gap: 8px; padding: 2px;} */
 .asset:hover{background-color: rgba(255, 255, 255, 0.1);}
 .asset .thumb {width: 48px; height: 48px;}
-.asset .name {flex: 1;overflow: hidden;text-overflow: ellipsis;white-space: nowrap; font-size: 12px;}
+.asset .name {flex: 1;overflow: hidden;text-overflow: ellipsis;white-space: nowrap; font-size: 12px;cursor: default;}
+
+.asset.high{outline: 2px solid #3b82f6;}

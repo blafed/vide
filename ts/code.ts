@@ -27,6 +27,7 @@ interface VideoRes extends Resource {
     fps: int
     duration: float
     el: HTMLVideoElement
+    audio: AudioRes | null
 }
 
 
@@ -46,7 +47,7 @@ interface ImageRes extends Resource {
 
 interface Asset {
     name: string
-    res: Resource
+    res: Res
     thumb: ImageBitmap
 }
 

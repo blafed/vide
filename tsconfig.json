@@ -3,7 +3,8 @@
         "target": "es2020",
         "module": "none",
         "outFile": "script.js",
-        "strict": true
+        "strict": true,
+        "inlineSourceMap": true
     },
     "include": [
         "ts"

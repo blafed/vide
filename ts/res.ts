@@ -43,16 +43,19 @@ async function res_create_image(f: File) {
 async function res_create_audio(f: File) {
     let ctx = new AudioContext()
     let bytes = await f.arrayBuffer()
-    let buffer = await ctx.decodeAudioData(bytes)
-    let res: AudioRes = {
-        type: ResType.Audio,
-        file: f,
-        buffer,
-        srate: buffer.sampleRate, channels: buffer.numberOfChannels,
-        duration: buffer.duration,
-        length: buffer.length
-    }
-    return res
+    try {
+        let buffer = await ctx.decodeAudioData(bytes)
+
+        let res: AudioRes = {
+            type: ResType.Audio,
+            file: f,
+            buffer,
+            srate: buffer.sampleRate, channels: buffer.numberOfChannels,
+            duration: buffer.duration,
+            length: buffer.length
+        }
+        return res
+    } catch { return null }
 }
 
 
