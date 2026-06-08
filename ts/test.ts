@@ -4,8 +4,7 @@ function debug_bitmap(b: ImageBitmap) {
     canvas.height = b.height
 
     const ctx = canvas.getContext("2d")!
-    let rect =
-        ctx.drawImage(b, 0, 0, 64, 64)
+    let rect = ctx.drawImage(b, 0, 0, 64, 64)
 
     console.log("%c ", `
         font-size: 1px;

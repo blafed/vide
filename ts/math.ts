@@ -1,14 +1,18 @@
-type Point = [number, number]
-type Rect = [number, number, number, number] | number[]
+type int = number
+type float = number
+type ID = number
+
+type Point = [float, float]
+type Rect = [float, float, float, float] | float[]
 
 
-function lerp(a: number, b: number, t: number) { return a + (b - a) * t }
-function clamp(v: number, min: number, max: number) { return Math.min(Math.max(v, min), max) }
+function lerp(a: float, b: float, t: float) { return a + (b - a) * t }
+function clamp(v: float, min: float, max: float) { return Math.min(Math.max(v, min), max) }
 
 function rect_one(): Rect { return [0, 0, 1, 1] }
 function rect_zero(): Rect { return [0, 0, 0, 0] }
 
-function rect_lerp(dst: Rect, a: Rect, b: Rect, t: number) {
+function rect_lerp(dst: Rect, a: Rect, b: Rect, t: float) {
     dst[0] = lerp(a[0], b[0], t)
     dst[1] = lerp(a[1], b[1], t)
     dst[2] = lerp(a[2], b[2], t)
@@ -16,7 +20,7 @@ function rect_lerp(dst: Rect, a: Rect, b: Rect, t: number) {
 }
 
 
-function rect_fit(src_w: number, src_h: number, dst_w: number, dst_h: number): Rect {
+function rect_fit(src_w: float, src_h: float, dst_w: float, dst_h: float): Rect {
     let scale = Math.min(dst_w / src_w, dst_h / src_h)
 
     let w = src_w * scale
@@ -44,7 +48,7 @@ const enum Tween {
     InOutExpo,
 }
 
-function tween(from: number, to: number, t: number, type: Tween = Tween.Linear): number {
+function tween(from: float, to: float, t: float, type: Tween = Tween.Linear): float {
     switch (type) {
         case Tween.InQuad: t = t * t; break
         case Tween.OutQuad: t = 1 - (1 - t) * (1 - t); break
@@ -81,8 +85,8 @@ function tween(from: number, to: number, t: number, type: Tween = Tween.Linear):
 }
 
 interface Sight {
-    from: number,
-    to: number,
+    from: float,
+    to: float,
 }
 function sight_len(s: Sight) {
     return s.to - s.from
@@ -92,13 +96,13 @@ function sight_speed(dst: Sight, src: Sight) {
     return sight_len(src) / sight_len(dst)
 }
 
-function sight_set_speed(dst: Sight, src: Sight, speed: number) {
+function sight_set_speed(dst: Sight, src: Sight, speed: float) {
     dst.to = dst.from + sight_len(src) / speed
 }
 
-function sight_map(x: number, from: Sight, to: Sight) {
+function sight_map(x: float, from: Sight, to: Sight) {
     return to.from + (x - from.from) * sight_len(to) / sight_len(from)
 }
 
-function hypot(x: number, y: number) { return Math.sqrt(x * x + y * y) }
-function sqmag(x: number, y: number) { return x * x + y * y }
+function hypot(x: float, y: float) { return Math.sqrt(x * x + y * y) }
+function sqmag(x: float, y: float) { return x * x + y * y }

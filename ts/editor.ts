@@ -1,141 +1,133 @@
-const enum EditorContext {
-    None,
-    Assets,
-}
-
-const sel: Sel = {
-    res: <Res[]>[],
-    asset: <Asset[]>[],
-}
-
+let project: Project
 const editor = {
-    assets: {
-        desc: false,
-        order: OrderBy.Name,
-        items: <Asset[]>[]
-    },
-    isPlaying: false,
-    context: EditorContext.None
+    assets_order: OrderBy.Name,
+    assets_desc: false,
+    assets: <Asset[]>[],
+    tracks: <Track[]>[],
+    sel_beh: SelBeh.Replace,
 }
 
-interface Sel {
-    res: Res[]
-    asset: Asset[]
+const enum SelBeh {
+    Replace, Append
 }
 
 
-const enum OrderBy { Name, Type, Date }
-
-
-async function asset_create(f: File) {
-    let type = res_type(f)
-    let res: Res
-    switch (type) {
-        case ResType.Audio: res = (await res_create_audio(f))!; break
-        case ResType.Image: res = await res_create_image(f); break
-        case ResType.Video: res = await res_create_video(f, 8); break
-        case ResType.Svg: res = await res_svg_create(f, 64, 64); break
-        default: return null
-    }
-
-    project.file.push(f)
-    project.res.push(res)
-    project.asset.push({ name: f.name, res, thumb: await res_generate_thumb(res, 64, 64), date: Date.now() })
-    return res
+const enum SelMode {
+    None, Track = 1, Asset = 2, All = -1
 }
 
+const sel = {
+    tracks: <Track[]>[],
+    assets: <Asset[]>[],
+}
 
-function editor_open_add_asset() {
-    getbyid('file').click()
+const enum OrderBy {
+    Name, Type, Date,
+}
+
+function editor_init() { }
+function editor_project_new() {
+    project = { file: [], res: [], asset: [], track: [], item: [], fps: 30 }
+    project_track_create(project, ItemType.Video)
+
+    editor_assets_refresh()
+    editor_tracks_refresh()
+}
+
+function editor_import_open() {
+    ui.file.click()
 }
 
 async function editor_import(f: File) {
-    let res = await asset_create(f)
-    if (!res) {
-        ui_error("Unsupported file type: " + f.name)
+    if (project_file_exists(f)) {
+        ui_warn("skipped file " + f.name + ". it already imported")
         return
     }
-    editor_assets_reorder()
-    ui_request()
-}
-
-function editor_select_asset(a: Asset) {
-    if (sel.asset.includes(a))
+    let ass = await project_asset_create(project, f)
+    if (!ass) {
+        ui_error("Unsupported file type: " + f.name + " " + f.type)
         return
-    sel.asset.push(a)
-    ui_request()
-}
-
-function editor_unselect_asset(a: Asset) {
-    let i = sel.asset.indexOf(a)
-    if (i >= 0)
-        sel.asset.splice(i, 1)
-    // ui_high_asset(a, false)
-    ui_request()
-}
-
-function editor_unselect_assets() {
-    // for (let x of sel.asset)
-    // ui_high_asset(x, false)
-    sel.asset = []
-    ui_request()
-}
-
-function editor_single_select_asset(a: Asset, shift: boolean) {
-    if (!shift) {
-        editor_unselect_assets()
     }
-    editor_select_asset(a)
+    editor_assets_refresh()
+    editor_sel_asset(ass, SelBeh.Append)
+    ui_request()
 }
 
-function editor_assets_order_by(order: OrderBy) {
-    editor.assets.order = order
-    editor_assets_reorder()
-}
-function editor_assets_order_desc(b: boolean) {
-    editor.assets.desc = b
-    editor_assets_reorder()
+function editor_is_sel_asset(a: Asset) {
+    return sel.assets.includes(a)
 }
 
-function editor_assets_order(order: OrderBy, desc: boolean) {
-    editor.assets.order = order
-    editor.assets.desc = desc
-    editor_assets_reorder()
+function editor_sel_asset_range(a: Asset, b: Asset) {
+    let ia = editor.assets.indexOf(a)
+    let ib = editor.assets.indexOf(b)
 }
 
-function editor_assets_reorder() {
+function editor_sel_mode() {
+    let m = 0
+    if (sel.assets.length) m |= SelMode.Asset
+    if (sel.tracks.length) m |= SelMode.Track
+    return m
+}
+
+
+function editor_unsel_all() {
+    sel.tracks.length = 0
+    sel.assets.length = 0
+    ui_request()
+}
+
+
+function editor_sel_asset(a: Asset, be = editor.sel_beh) {
+    if (be == SelBeh.Replace)
+        editor_unsel_all()
+    sel.assets.push(a)
+    ui_request()
+}
+
+function editor_assets_refresh() {
+
     let a = editor.assets
+    a.length = 0
+    a.push(...project.asset)
 
-    a.items.length = 0
-    a.items.push(...project.asset)
+    let sign = editor.assets_desc ? - 1 : 1
+    let order = editor.assets_order
 
-    let sign = a.desc ? - 1 : 1
-
-    if (a.order == OrderBy.Name)
-        a.items.sort((a, b) => sign * a.name.localeCompare(b.name))
-    else if (a.order == OrderBy.Type)
-        a.items.sort((a, b) => sign * (a.res.type - b.res.type))
-    else if (a.order == OrderBy.Date)
-        a.items.sort((a, b) => sign * (a.date - b.date))
+    if (order == OrderBy.Name)
+        a.sort((a, b) => sign * a.name.localeCompare(b.name))
+    else if (order == OrderBy.Type)
+        a.sort((a, b) => sign * (a.res.type - b.res.type))
+    else if (order == OrderBy.Date)
+        a.sort((a, b) => sign * (a.date - b.date))
 
     ui_request()
 }
 
-function editor_track_add_res(v: Res) {
-    if (!project.track.length)
-        track_add(track_create(ItemType.Video))
-    let item = item_create(v)
-    track_add(item)
-    ui_request()
+
+function editor_assets_order_by(o: OrderBy) {
+    editor.assets_order = o
+    editor_assets_refresh()
 }
 
-function editor_toggle_play() {
-
+function editor_assets_order_desc(b: boolean) {
+    editor.assets_desc = b
+    editor_assets_refresh()
 }
 
-function editor_action(a: Action) {
+function editor_tracks_refresh() {
+    editor.tracks.length = 0
+    editor.tracks.push(...project.track)
+}
+
+
+enum Action {
+    none, import, sel_append, sel_replace,
+}
+
+function editor_action(a: Action): any {
     switch (a) {
-        case Action.play: editor_toggle_play(); break
-        case Action.import: editor_open_add_asset(); break
+        case Action.import: return editor_import_open()
+        case Action.sel_append: return editor.sel_beh = SelBeh.Append
+        case Action.sel_replace: return editor.sel_beh = SelBeh.Replace
     }
 }

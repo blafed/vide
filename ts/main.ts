@@ -1,8 +1,6 @@
-type int = number
-type float = number
-type ID = number
-
 function main() {
     ui_init()
     input_init()
+    editor_init()
+    editor_project_new()
 }
