@@ -225,24 +225,26 @@ function hotkey(ev: KeyboardEvent): string | null {
     return null
 }
 
-function ui_key(ev: KeyboardEvent) {
-    switch (ev.key) {
-        case 'Escape': btn('cancel'); break
-        case 'Space': btn('play'); break
-        case 'Delete': btn('delete'); break
-        case 'KeyZ': if (ev.ctrlKey && ev.shiftKey) btn('redo'); else if (ev.ctrlKey) btn('undo'); break
-        case 'KeyS': if (ev.ctrlKey) btn('save'); break
-        case 'KeyA': if (ev.ctrlKey) btn('selecta'); break
-        case 'KeyD': if (ev.ctrlKey) btn('duplicate'); break
-        case 'KeyC': if (ev.ctrlKey) btn('copy'); break
-        case 'KeyV': if (ev.ctrlKey) btn('paste'); break
-        case 'KeyX': if (ev.ctrlKey) btn('cut'); break
-        case 'KeyF': if (ev.ctrlKey) btn('find'); break
+// function ui_key(ev: KeyboardEvent) {
+//     let key = ui_key(ev)
+//     // switch (ev.key) {
+//     //     case 'Escape': btn('cancel'); break
+//     //     case 'Space': btn('play'); break
+//     //     case 'Delete': btn('delete'); break
+//     //     case 'KeyZ': if (ev.ctrlKey && ev.shiftKey) btn('redo'); else if (ev.ctrlKey) btn('undo'); break
+//     //     case 'KeyS': if (ev.ctrlKey) btn('save'); break
+//     //     case 'KeyA': if (ev.ctrlKey) btn('selecta'); break
+//     //     case 'KeyD': if (ev.ctrlKey) btn('duplicate'); break
+//     //     case 'KeyC': if (ev.ctrlKey) btn('copy'); break
+//     //     case 'KeyV': if (ev.ctrlKey) btn('paste'); break
+//     //     case 'KeyX': if (ev.ctrlKey) btn('cut'); break
+//     //     case 'KeyF': if (ev.ctrlKey) btn('find'); break
 
-    }
+//     // }
 
-    prevent_default(ev)
-}
+//     // btn(key)
+//     prevent_default(ev)
+// }
 
 function ui_contextmenu(ev: Event) {
 
@@ -262,7 +264,7 @@ function ui_render_track(t: Track, el: HTMLElement) {
 
 
 const enum PointerMode {
-    Down, Up, Move
+    None, Down, Up, Move
 }
 
 

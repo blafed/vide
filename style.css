@@ -2,14 +2,9 @@
     --bg: #eee;
     --bgc: #e2e2e2;
     --fg: #222222;
-
-
     --border: #c0c0c0;
-
+    
     --accent: #3b82f6;
-
-    --hover: #00000010;
-    --select: #3b82f620;
 
     --success: #22c55e;
     --warning: #f59e0b;
@@ -26,9 +21,6 @@
     --border: #666666;
 
     --accent: #3b82f6;
-
-    --hover: #ffffff10;
-    --select: #3b82f640;
 
     --success: #22c55e;
     --warning: #f59e0b;

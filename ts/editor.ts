@@ -1,15 +1,21 @@
-
-const sel: Sel = {
-    res: [],
-    asset: [],
+const enum EditorContext {
+    None,
+    Assets,
 }
 
-const editor: Editor = {
+const sel: Sel = {
+    res: <Res[]>[],
+    asset: <Asset[]>[],
+}
+
+const editor = {
     assets: {
         desc: false,
-        order: EditorAssetsOrderBy.Name,
-        items: []
+        order: OrderBy.Name,
+        items: <Asset[]>[]
     },
+    isPlaying: false,
+    context: EditorContext.None
 }
 
 interface Sel {
@@ -18,17 +24,7 @@ interface Sel {
 }
 
 
-interface Editor {
-    assets: EditorAssets
-}
-
-const enum EditorAssetsOrderBy { Name, Type, Date }
-
-interface EditorAssets {
-    order: EditorAssetsOrderBy
-    desc: boolean
-    items: Readonly<Asset>[]
-}
+const enum OrderBy { Name, Type, Date }
 
 
 async function asset_create(f: File) {
@@ -92,7 +88,7 @@ function editor_single_select_asset(a: Asset, shift: boolean) {
     editor_select_asset(a)
 }
 
-function editor_assets_order_by(order: EditorAssetsOrderBy) {
+function editor_assets_order_by(order: OrderBy) {
     editor.assets.order = order
     editor_assets_reorder()
 }
@@ -101,7 +97,7 @@ function editor_assets_order_desc(b: boolean) {
     editor_assets_reorder()
 }
 
-function editor_assets_order(order: EditorAssetsOrderBy, desc: boolean) {
+function editor_assets_order(order: OrderBy, desc: boolean) {
     editor.assets.order = order
     editor.assets.desc = desc
     editor_assets_reorder()
@@ -115,11 +111,11 @@ function editor_assets_reorder() {
 
     let sign = a.desc ? - 1 : 1
 
-    if (a.order == EditorAssetsOrderBy.Name)
+    if (a.order == OrderBy.Name)
         a.items.sort((a, b) => sign * a.name.localeCompare(b.name))
-    else if (a.order == EditorAssetsOrderBy.Type)
+    else if (a.order == OrderBy.Type)
         a.items.sort((a, b) => sign * (a.res.type - b.res.type))
-    else if (a.order == EditorAssetsOrderBy.Date)
+    else if (a.order == OrderBy.Date)
         a.items.sort((a, b) => sign * (a.date - b.date))
 
     ui_request()
@@ -131,4 +127,15 @@ function editor_track_add_res(v: Res) {
     let item = item_create(v)
     track_add(item)
     ui_request()
+}
+
+function editor_toggle_play() {
+
+}
+
+function editor_action(a: Action) {
+    switch (a) {
+        case Action.play: editor_toggle_play(); break
+        case Action.import: editor_open_add_asset(); break
+    }
 }

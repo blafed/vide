@@ -7,14 +7,14 @@
     <div id="preview" class="panel">
         <canvas id="main" width="800" height="600"></canvas>
         <div id="playback">
-            <button onclick="ui_btn('prev')"><img src="svg/prev.svg" /></button>
-            <button onclick="ui_btn('play')"><img src="svg/play.svg" /></button>
-            <button onclick="ui_btn('next')"><img src="svg/next.svg" /></button>
+            <button onclick="btn('prev')"><img src="svg/prev.svg" /></button>
+            <button onclick="btn('play')"><img src="svg/play.svg" /></button>
+            <button onclick="btn('next')"><img src="svg/next.svg" /></button>
         </div>
     </div>
     <div class="panel">
         <header>
-            <button onclick="ui_btn('track_new')"><img src="svg/add.svg" /></button>
+            <button onclick="btn('track_new')"><img src="svg/add.svg" /></button>
             <span>Tracks</span>
             <div></div>
         </header>
@@ -36,7 +36,7 @@
     <div class="panel">
         <input id="file" type="file" hidden multiple oninput="ui_file_input(this, event)">
         <header>
-            <button onclick="ui_btn('file')"><img src="svg/add.svg" /></button>
+            <button onclick="btn('file')"><img src="svg/add.svg" /></button>
             <span>Assets</span>
             <div>
                 <label>sort by</label>
