@@ -12,26 +12,31 @@
             <button onclick="btn('next')"><img src="svg/next.svg" /></button>
         </div>
     </div>
-
     <div class="panel">
-        <header>
-            <button onclick="btn('track_new')"><img src="svg/add.svg" /></button>
-            <span>Tracks</span>
-            <div></div>
-        </header>
-        <div class="container" id="tracks">
-            <div class="track"><canvas width="768" height="64" id="track_video"></canvas></div>
-        </div>
-    </div>
-
-    <div class="panel">
-        <header>Tools</header>
         <div id="tools">
             <button><img src="svg/cut.svg"></button>
-            <button><img src="svg/add.svg"></button>
-            <button><img src="svg/add.svg"></button>
+            <button><img src="svg/split.svg"></button>
+            <button><img src="svg/join.svg"></button>
+            <button><img src="svg/delete.svg"></button>
+            <button><img src="svg/key.svg"></button>
         </div>
     </div>
+
+    <div class="panel">
+        <div id="timeline">
+            <div id="sight">
+                <div class="from"></div>
+                <div class="to"></div>
+                <div id="carret2"></div>
+            </div>
+            <canvas id="preview" width="768" height="32px"></canvas>
+        </div>
+        <div class="container" id="tracks">
+            <div class="track"><canvas width="768" height="64"></canvas></div>
+        </div>
+        <div id="carret"></div>
+    </div>
+
 
     <div class="panel">
         <input id="file" type="file" hidden multiple oninput="on_file(this)">
@@ -56,6 +61,9 @@
                 <div class="name">hi there</div>
             </div>
         </div>
+    </div>
+    <div class="panel">
+        <div id="notif">0</div>
     </div>
 
     <script src="script.js"></script>

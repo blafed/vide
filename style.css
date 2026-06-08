@@ -4,15 +4,23 @@
     --border: #ccc;
     --fg: #222;
     --accent: #3b82f6;
+    --select: #3b83f6a5;
+    --warn: #ffd500;
+    --error: #ff1100;
 }
 
 [data-theme="dark"] {
-    --bg: #222;
-    --bgc: #444;
-    --border: #666;
-    --fg: #ddd;
+    --bg: #111;
+    --bgc: #222;
+    --border: #444;
+    --fg: #e0e0e0;
     --accent: #3b82f6;
+    --select: #3b83f655;
+    --warn: #ffd500;
+    --error: #ff1100;
 }
+
+[data-theme="dark"] img[src$=".svg"] {filter: invert(1);}
 
 body{
     background-color: var(--bg); color: var(--fg);display: flex; flex-direction: column; align-items: center;
@@ -20,26 +28,27 @@ body{
     /* font-family: "Segoe UI", "Inter", "Noto Sans", sans-serif; */
 }
 
-.panel{border: 1px solid var(--border); width: 800px; padding: 4px;}
+.panel{border: 1px solid var(--border); width: 800px; padding: 4px;position: relative;}
 .panel:hover{outline: 2px solid var(--border);}
 .track {background-color: var(--bgc); height: 64px;}
 .track:hover{outline: 2px solid var(--border);}
 
 
-#main{width: 800px; height: 600px; background-color: black;}
-#playback{display: flex; justify-content: center;gap: 2px;}
+#main{width: 800px; height: 400px; background-color: black;}
+#playback{display: flex; justify-content: center;gap: 2px; padding: 2px;}
 /* .panel header {font-weight: bold; text-align: center; margin-bottom: 8px;} */
 header {display: flex; justify-content: space-between; width: 100%;}
 
 .act, button, .asset, select, input{border-radius: 8px; color: var(--fg);border: 1px solid var(--border); margin: 0;}
-.act:hover, button:hover, .asset:hover, select:hover, input:hover{box-shadow: 0 0 0 1px var(--border);}
+.act:hover, button:hover:not(:disabled), .asset:hover, select:hover, input:hover{box-shadow: 0 0 0 1px var(--border);}
 select {height: 24px;min-width: 64px;padding: 0 4px;border: none;background: var(--bgc);color: var(--fg);font: inherit;font-weight: normal; font-size: 12px;}
 label {font-weight: normal; font-size: 12px;}
 
 button:active{opacity: 0.9;}
-button {background-color: var(--accent); cursor: pointer; font-size: 16px; height: 16px; box-sizing: content-box; padding: 4px; border: 1px solid var(--border);}
+button {background-color: var(--bgc); cursor: pointer; font-size: 16px; height: 16px; box-sizing: content-box; padding: 4px; border: 1px solid var(--border);}
 button img {width: 16px; height: 16px;}
 img {width: 24px; height: 24px;}
+button:disabled{cursor: default; opacity: 0.4; border-color: transparent;}
 
 #assets {height: 256px; display: flex; flex-wrap: wrap; gap: 4px; box-sizing: border-box;}
 .asset { width: 64px; height: 64px; text-align: center; padding: 2px; background-color: var(--bgc); border-radius: 8px;}
@@ -49,15 +58,29 @@ img {width: 24px; height: 24px;}
 
 
 /* .asset * {pointer-events: none;} */
-.container{overflow: auto; padding: 4px;}
+.container{overflow: auto; padding: 4px 0px;}
 
 
 
 ::-webkit-scrollbar {width: 12px;height: 12px;}
 ::-webkit-scrollbar-track {background: var(--border);}
-::-webkit-scrollbar-thumb {background: var(--bgc);border: 1px solid var(--border);border-radius: 6px;}
-::-webkit-scrollbar-thumb:hover {background: var(--bg);}
+::-webkit-scrollbar-thumb {background: var(--bg);border: 1px solid var(--border);border-radius: 6px;}
+::-webkit-scrollbar-thumb:hover {outline: 2px solid var(--bgc);}
 ::-webkit-scrollbar-corner {background: var(--bg);}
 
 
-#tracks {height: 256px;}
+#tracks {height: 128px;}
+
+#timeline{height: 16px; padding: 4px; background-color: black; position: relative;}
+#preview,#sight{height: 32px;}
+#sight{background-color: var(--select); height: 100%; width: 50%; position: absolute;top: 0; left: 0%;cursor: grab;}
+.from,.to{position: absolute; background-color: var(--accent); height: 100%; width: 4px;border-radius: 8px;border: 1px solid var(--border);cursor: ew-resize;opacity: 0.7;}
+.from:hover,.to:hover{outline: 1px solid var(--border);}
+.to{right: -2px;}
+.from{left: -2px;}
+
+#carret,#carret2{position: absolute; top: 0; left: 50%; height: 100%; width: 2px; background-color: var(--warn); cursor: crosshair;}
+
+#notif{visibility: hidden;}
+#notif.warn{color: var(--warn);}
+#notif.error{color: var(--error);}

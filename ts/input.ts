@@ -106,6 +106,8 @@ function on_down(ev: PointerEvent) {
 
     if (ass)
         p.target = p.downTarget = ui_asset(ass)!
+    if (!ass)
+        editor_unsel_all()
 
     pointers.push(p)
 }
@@ -117,6 +119,13 @@ function on_up(ev: PointerEvent) {
     let ass = ui_ev_asset(ev)
     if (ass && editor_is_sel_asset(ass) && !p.drag)
         ui_asset_down(ass)
+
+    let track = ui_ev_track(ev)
+    if (track) {
+        let el = ui_track(track)!
+        let p01 = (p.x - el.offsetLeft) / el.offsetWidth
+        editor_track_add_assets(track, sel.assets, editor_timeline_off(p01))
+    }
 
     p.mode = PointerMode.Up
 

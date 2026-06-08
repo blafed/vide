@@ -5,6 +5,7 @@ const editor = {
     assets: <Asset[]>[],
     tracks: <Track[]>[],
     sel_beh: SelBeh.Replace,
+    timeline: <Sight>{ from: 0, to: 30 }
 }
 
 const enum SelBeh {
@@ -117,6 +118,13 @@ function editor_assets_order_desc(b: boolean) {
 function editor_tracks_refresh() {
     editor.tracks.length = 0
     editor.tracks.push(...project.track)
+}
+
+function editor_timeline_off(p01: float) { return sight_off(editor.timeline, p01) }
+
+function editor_track_add_assets(t: Track, assets: Asset[], off: float) {
+    editor_tracks_refresh()
+    ui_request()
 }
 
 

@@ -1,2 +1,4 @@
 x get video and convert it into frames
-simple timeline ui
+x simple timeline ui
+
+editor.sel_modes doesnt reset on Shift keyup correctly @bug

@@ -86,6 +86,7 @@ const ui = {
     tracks: getbyid('tracks'),
     pointers: <Pointer[]>[],
     drag: <DragElement[]>[],
+    notif: getbyid('notif')
 }
 
 interface DragElement {
@@ -96,8 +97,20 @@ interface DragElement {
 function ui_init() {
 }
 
-function ui_error(s: string) { alert(s) }
-function ui_warn(s: string) { alert(s) }
+function ui_notif(s: string) {
+    ui.notif.textContent = s
+    ui.notif.style.visibility = 'visible'
+    setTimeout(() => ui.notif.style.visibility = 'hidden', 5000)
+}
+
+function ui_error(s: string) {
+    ui.notif.className = 'error'
+    ui_notif(s)
+}
+function ui_warn(s: string) {
+    ui.notif.className = 'warn'
+    ui_notif(s)
+}
 function ui_request() {
     if (ui.requested_update)
         return
@@ -115,6 +128,7 @@ function ui_update() {
 
 function ui_drag_start(el: HTMLElement) {
     component_set(el, 'drag', { ox: el.offsetLeft, oy: el.offsetTop })
+    el.style.pointerEvents = 'none'
 }
 
 function ui_drag_move(el: HTMLElement, dx: float, dy: float) {
@@ -128,6 +142,7 @@ function ui_drag_end(el: HTMLElement) {
     el.style.position = ''
     el.style.left = ''
     el.style.top = ''
+    el.style.pointerEvents = ''
 }
 
 
@@ -152,14 +167,28 @@ function ui_asset(a: Asset): HTMLElement | null {
     return null
 }
 
-function ui_ev_asset(ev: Event) {
+function ui_track(t: Track): HTMLElement | null {
+    for (let child of ui.tracks.children) {
+        if (component_get(child, 'track') == t)
+            return child as HTMLElement
+    }
+    return null
+}
+
+function ui_ev_asset(ev: Event): Asset | null {
     let el = (ev.target as HTMLElement).closest('.asset') as HTMLElement
     if (!el)
         return null
-    return ui_get_asset(el)
+    return component_get(el, 'asset')
 }
 
-function ui_get_asset(el: HTMLElement): Asset | null { return component_get(el, 'asset') }
+function ui_ev_track(ev: Event): Track | null {
+    let el = (ev.target as HTMLElement).closest('.track') as HTMLElement
+    if (!el)
+        return null
+    return component_get(el, 'track')
+}
+
 
 function ui_asset_down(a: Asset) {
     editor_sel_asset(a)
@@ -167,4 +196,6 @@ function ui_asset_down(a: Asset) {
 
 function ui_update_track(t: Track, el: HTMLElement) {
     let canvas = getbytag('canvas', el)[0]
+
+    component_set(el, 'track', t)
 }
