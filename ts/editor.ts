@@ -9,7 +9,7 @@ const editor: Editor = {
         desc: false,
         order: EditorAssetsOrderBy.Name,
         items: []
-    }
+    },
 }
 
 interface Sel {
@@ -30,28 +30,6 @@ interface EditorAssets {
     items: Readonly<Asset>[]
 }
 
-const _thumb_canvas = document.createElement('canvas').getContext('2d')!
-
-async function res_generate_thumb(res: Res, w: number, h: number) {
-    _thumb_canvas.clearRect(0, 0, _thumb_canvas.canvas.width, _thumb_canvas.canvas.height)
-    _thumb_canvas.canvas.width = w
-    _thumb_canvas.canvas.height = h
-    switch (res.type) {
-        case ResType.Video:
-            let vres = res as VideoRes
-            let len = 1 / vres.fps
-            await video_decode(vres, 0, len, true)
-            video_draw_frames(vres, _thumb_canvas, 0, len)
-            break
-        case ResType.Image:
-        case ResType.Svg:
-            let rect = rect_fit(res.width, res.height, w, h)
-            _thumb_canvas.drawImage(res.bitmap, rect[0], rect[1], rect[2], rect[3])
-            break
-    }
-
-    return await createImageBitmap(_thumb_canvas.canvas)
-}
 
 async function asset_create(f: File) {
     let type = res_type(f)
@@ -72,7 +50,7 @@ async function asset_create(f: File) {
 
 
 function editor_open_add_asset() {
-    ui.file_input.click()
+    getbyid('file').click()
 }
 
 async function editor_import(f: File) {
@@ -144,5 +122,13 @@ function editor_assets_reorder() {
     else if (a.order == EditorAssetsOrderBy.Date)
         a.items.sort((a, b) => sign * (a.date - b.date))
 
+    ui_request()
+}
+
+function editor_track_add_res(v: Res) {
+    if (!project.track.length)
+        track_add(track_create(ItemType.Video))
+    let item = item_create(v)
+    track_add(item)
     ui_request()
 }

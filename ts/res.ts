@@ -7,7 +7,7 @@ type Res = VideoRes | AudioRes | ImageRes | SvgRes;
 
 interface Resource {
     type: ResType
-    file: File
+    file: File | null
 }
 
 interface VideoRes extends Resource {
@@ -15,6 +15,7 @@ interface VideoRes extends Resource {
     width: int
     height: int
     frames: (ImageBitmap | null)[]
+    preview: (ImageBitmap | null)[]
     fps: int
     duration: float
     el: HTMLVideoElement
@@ -71,11 +72,11 @@ async function res_create_video(f: File, fps: int) {
     })
 
     let length = Math.ceil(el.duration * fps)
-    const frames = new Array(length)
 
     let v: VideoRes = {
         type: ResType.Video, file: f,
-        frames: frames, width: el.videoWidth, height: el.videoHeight, fps: fps, duration: el.duration, el: el,
+        frames: new Array(length), preview: new Array(length),
+        width: el.videoWidth, height: el.videoHeight, fps: fps, duration: el.duration, el: el,
         audio: await res_create_audio(f)
     }
     return v
@@ -108,6 +109,29 @@ async function res_create_audio(f: File) {
     } catch { return null }
 }
 
+
+async function video_decode_frames(v: VideoRes, from: float, to: float, out: (ImageBitmap | null)[], max_width = 0, skip_exist = false) {
+    let start = Math.floor(from * v.fps)
+    let end = Math.ceil(to * v.fps)
+
+
+    let aspect = v.height / v.width
+    for (let i = start; i < end; i++) {
+        if (out[i]) {
+            if (skip_exist) continue
+            out[i]?.close()
+        }
+
+        await video_seek(v.el, i / v.fps)
+        if (!max_width) {
+            let bitmap = await createImageBitmap(v.el)
+            out[i] = bitmap
+        } else {
+            let bitmap = await createImageBitmap(v.el, { resizeWidth: max_width, resizeHeight: Math.floor(max_width * aspect), resizeQuality: "low" })
+            out[i] = bitmap
+        }
+    }
+}
 
 async function video_decode(v: VideoRes, from: float, to: float, skip_exist = false) {
     let start = Math.floor(from * v.fps)
@@ -230,4 +254,36 @@ async function svg_raster_over(svg: SvgRes, width: int, height: int) {
         return
     svg.bitmap?.close()
     svg.bitmap = await svg_raster(svg, width, height)
+}
+
+
+const _thumb_canvas = document.createElement('canvas').getContext('2d')!
+
+async function res_generate_thumb(res: Res, w: number, h: number) {
+    _thumb_canvas.clearRect(0, 0, _thumb_canvas.canvas.width, _thumb_canvas.canvas.height)
+    _thumb_canvas.canvas.width = w
+    _thumb_canvas.canvas.height = h
+    switch (res.type) {
+        case ResType.Video:
+            let vres = res as VideoRes
+            let len = 1 / vres.fps
+            await video_decode(vres, 0, len, true)
+            video_draw_frames(vres, _thumb_canvas, 0, len)
+            break
+        case ResType.Image:
+        case ResType.Svg:
+            let rect = rect_fit(res.width, res.height, w, h)
+            _thumb_canvas.drawImage(res.bitmap, rect[0], rect[1], rect[2], rect[3])
+            break
+    }
+
+    return await createImageBitmap(_thumb_canvas.canvas)
+}
+
+async function res_generate_preview(res: Res) {
+    switch (res.type) {
+        case ResType.Video:
+            video_decode_frames(res, 0, res.duration, res.preview, 32, true)
+            break
+    }
 }

@@ -1,31 +1,46 @@
-<link rel="stylesheet" href="style.css">
+<head>
+    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 </head>
 
-<body data-theme="dark">
+<body data-theme="dark" oncontextmenu="ui_contextmenu(event); return false">
     <div id="preview" class="panel">
         <canvas id="main" width="800" height="600"></canvas>
         <div id="playback">
-            <button><img src="svg/prev.svg" /></button>
-            <button><img src="svg/play.svg" /></button>
-            <button><img src="svg/next.svg" /></button>
+            <button onclick="ui_btn('prev')"><img src="svg/prev.svg" /></button>
+            <button onclick="ui_btn('play')"><img src="svg/play.svg" /></button>
+            <button onclick="ui_btn('next')"><img src="svg/next.svg" /></button>
         </div>
     </div>
-    <div id="tracks" class="panel">
-        <div class="track"><canvas width="768" height="64" id="track_video"></canvas></div>
-        <!-- <div class="track"><canvas width="512" height="64"></canvas></div> -->
-    </div>
-    <div id="file_area">
-        <label id="file_label"></label>
+    <div class="panel">
+        <header>
+            <button onclick="ui_btn('track_new')"><img src="svg/add.svg" /></button>
+            <span>Tracks</span>
+            <div></div>
+        </header>
+        <div><canvas width="800" height="32" id="timeline"></canvas></div>
+        <div class="container" id="tracks">
+            <div class="track"><canvas width="768" height="64" id="track_video"></canvas></div>
+        </div>
     </div>
 
     <div class="panel">
-        <input id="file" type="file" hidden multiple>
+        <header>Tools</header>
+        <div id="tools">
+            <button><img src="svg/cut.svg"></button>
+            <button><img src="svg/add.svg"></button>
+            <button><img src="svg/add.svg"></button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <input id="file" type="file" hidden multiple oninput="ui_file_input(this, event)">
         <header>
-            <button id="add_asset"><img src="svg/add.svg" /></button>
+            <button onclick="ui_btn('file')"><img src="svg/add.svg" /></button>
             <span>Assets</span>
             <div>
                 <label>sort by</label>
-                <select id="assets_order" onchange="ui_assets_orderby(this, event)">
+                <select onchange="ui_assets_orderby(this, event)">
                     <option value="0">name</option>
                     <option value="1">type</option>
                     <option value="2">date</option>
@@ -36,13 +51,13 @@
             </div>
         </header>
         <div id="assets" class="container">
-            <div class="asset">
+            <div class="asset drag" onpointerdown="ui_asset_click(this, event)">
                 <canvas class="thumb"></canvas>
-                <div class="name">hi there </div>
+                <div class="name" ondblclick="ui_asset_rename(this, event)">hi there</div>
             </div>
         </div>
     </div>
-
+    <!-- 
     <div id="ui">
         <button><img src="svg/cut.svg" /></button>
         <button>hi there</button>
@@ -58,7 +73,7 @@
             <option>2</option>
             <option>3</option>
         </select>
-    </div>
+    </div> -->
 
 
     <script src="script.js"></script>

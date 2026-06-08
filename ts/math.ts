@@ -79,3 +79,26 @@ function tween(from: number, to: number, t: number, type: Tween = Tween.Linear):
 
     return from + (to - from) * t
 }
+
+interface Sight {
+    from: number,
+    to: number,
+}
+function sight_len(s: Sight) {
+    return s.to - s.from
+}
+
+function sight_speed(dst: Sight, src: Sight) {
+    return sight_len(src) / sight_len(dst)
+}
+
+function sight_set_speed(dst: Sight, src: Sight, speed: number) {
+    dst.to = dst.from + sight_len(src) / speed
+}
+
+function sight_map(x: number, from: Sight, to: Sight) {
+    return to.from + (x - from.from) * sight_len(to) / sight_len(from)
+}
+
+function hypot(x: number, y: number) { return Math.sqrt(x * x + y * y) }
+function sqmag(x: number, y: number) { return x * x + y * y }
