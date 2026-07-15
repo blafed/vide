@@ -4,9 +4,12 @@
         "module": "none",
         "outFile": "script.js",
         "strict": true,
-        "inlineSourceMap": true
+        "sourceMap": true,
+        "allowJs": false
     },
     "include": [
-        "ts"
-    ]
+        "src",
+        "extra",
+        "main.ts"
+    ],
 }

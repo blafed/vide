@@ -5,47 +5,54 @@
 
 <body data-theme="dark">
     <div class="panel">
+        <select id="file_menu" onchange="opt(this)">
+            <option value="" selected disabled>File</option>
+            <option value="new">New Project</option>
+            <option value="save">Save Project</option>
+            <option value="load">Load Project</option>
+        </select>
+    </div>
+
+    <div class="panel">
         <canvas id="main" width="800" height="600"></canvas>
-        <div id="playback">
-            <button onclick="btn('prev')"><img src="svg/prev.svg" /></button>
-            <button onclick="btn('play')"><img src="svg/play.svg" /></button>
-            <button onclick="btn('next')"><img src="svg/next.svg" /></button>
-        </div>
-    </div>
-    <div class="panel">
-        <div id="tools">
-            <button><img src="svg/cut.svg"></button>
-            <button><img src="svg/split.svg"></button>
-            <button><img src="svg/join.svg"></button>
-            <button><img src="svg/delete.svg"></button>
-            <button><img src="svg/key.svg"></button>
+        <div id="playbtns">
+            <button id="prev" onclick="btn(this)" title="Prev Frame"><img src="svg/prev.svg" /></button>
+            <button id="play" onclick="btn(this)" title="Play/Pause"><img src="svg/play.svg" /></button>
+            <button id="next" onclick="btn(this)" title="Next Frame"><img src="svg/next.svg" /></button>
         </div>
     </div>
 
     <div class="panel">
-        <div id="timeline">
-            <div id="sight">
-                <div class="from"></div>
-                <div class="to"></div>
-                <div id="carret2"></div>
+        <div id="preview"></div>
+        <div id="timeline" class="comp">
+            <canvas></canvas>
+            <div class="caret"></div>
+            <div class="sight"></div>
+        </div>
+        <div style="position: relative;">
+            <div class="container comp" id="tracks">
+                <div class="track comp container">
+                    <div class="item comp">
+                        <canvas width="768" height="64"></canvas>
+                    </div>
+                </div>
             </div>
-            <canvas id="preview" width="768" height="32px"></canvas>
+            <div class="caret"></div>
         </div>
-        <div class="container" id="tracks">
-            <div class="track"><canvas width="768" height="64"></canvas></div>
-        </div>
-        <div id="carret"></div>
     </div>
 
-
     <div class="panel">
-        <input id="file" type="file" hidden multiple oninput="on_file(this)">
+        <input id="file" type="file" hidden multiple oninput="file(this)">
+        <input id="project_load" type="file" hidden accept=".vide" oninput="file(this)">
+        <a id="project_save"></a>
         <header>
-            <button onclick="btn('import')"><img src="svg/add.svg" /></button>
-            <span>Assets</span>
+            <button id="import" onclick="btn(this)"><img src="svg/add.svg" /></button>
+            <button id="addtest" onclick="btn(this)"><img src="svg/key.svg" /></button>
+            <input id="path" value="/" oninput="text(this)" />
+            <div class="grow"></div>
             <div>
                 <label>sort by</label>
-                <select onchange="on_assets_order_by(this)">
+                <select id="asset_sort" onchange="opt(this)">
                     <option value="0">name</option>
                     <option value="1">type</option>
                     <option value="2">date</option>
@@ -55,19 +62,37 @@
                 <input type="checkbox" onchange="on_assets_order_desc(this)">
             </div>
         </header>
-        <div id="assets" class="container">
-            <div class="asset drag">
+        <div id="assets" class="container comp">
+            <div class="asset comp">
                 <canvas class="thumb"></canvas>
                 <div class="name">hi there</div>
             </div>
         </div>
     </div>
+
     <div class="panel">
-        <div id="notif">0</div>
+        <div id="inspector">
+            <div id="fields" class="container">
+                <div>
+                    <label>select</label>
+
+                    <input type="number" value="99">
+                    <input type="number" value="99.99">
+                    <input type="range" value="15" min="0" max="20">
+                    <input type="range" value="0.5">
+                    <input type="checkbox">
+                    <select></select>
+                    <input type="text" value="hi">
+                    <button>hi there</button>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <div id="pane" class="container">
+        <div></div>
+    </div>
+    <script src="lib/mp4box.js"></script>
     <script src="script.js"></script>
     <script>main()</script>
 </body>
-
-</html>

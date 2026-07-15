@@ -1,3 +1,7 @@
 .vscode
 code.js
 trash
+*.js.map
+node_modules
+old
+gitbackup.zip

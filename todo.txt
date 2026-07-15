@@ -1,4 +1,50 @@
-x get video and convert it into frames
-x simple timeline ui
+* {
+    menu
+    preview
+    tracks {
+        track {items}
+    }
+    asset
+}
 
-editor.sel_modes doesnt reset on Shift keyup correctly @bug
+* timeline = items[]
+* layer = track = item[] computed from timeline
+* anim[] is animation, bolted on
+
+res_load(res, chunk, fps)
+
+
+item operations
+
+
+tools
+    create_item
+    delete_item
+    move_item
+    shift_item_right/left
+    shift_item_right/left_pushing
+    split_item
+    merge_items
+    ripple_at
+    ripple_at_left
+    relayer_item
+    move_relayer_item
+    cut_item (split into 3 items)
+    duplicate_item (duplicates into another layer)
+    respeed_item
+    
+REWORK:
+    kill the legacy
+    do stuff
+    fuck the other stuff!
+
+
+
+
+
+
+x res_draw_track(res, ctx, from, to, fps, dst, fit)
+x res_draw_thumb(res, ctx)
+
+
+x any draw requires to be loaded first
