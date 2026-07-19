@@ -1,7 +1,7 @@
 ///<reference path="../lib/mp4box.js" />
 
 interface Mp4Video {
-    width: number, height: number, duration: float,
+    file: File, width: number, height: number, duration: float,
     codec: string; description?: Uint8Array; samples: Mp4Sample[]
 }
 
@@ -52,7 +52,7 @@ async function mp4_info(f: File): Promise<Mp4Video> {
                 mp4box.onSamples = (track_id: any, ref: any, samples: Mp4Sample[]) => {
                     console.log(track)
                     resolve({
-                        codec: track.codec, width: track.track_width, height: track.track_height, duration: track.duration / track.timescale,
+                        file: f, codec: track.codec, width: track.track_width, height: track.track_height, duration: track.duration / track.timescale,
                         description: avcc_to_description(entry.avcC), samples
                     });
                 };

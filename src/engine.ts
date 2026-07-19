@@ -21,6 +21,8 @@ function within(a: float, b: float, t: float) { return a <= t && t <= b }
 
 function range_contains(a: Rangef, b: Rangef) { return a[0] <= b[0] && b[1] <= a[1] }
 function xrange_contains(a: Rangef, b: Rangef) { return a[0] <= b[0] && b[1] < a[1] }
+function range_within(r: Rangef, x: float) { return r[0] <= x && x <= r[1] }
+function xrange_within(r: Rangef, x: float) { return r[0] <= x && x < r[1] }
 function range_overlaps(a: Rangef, b: Rangef) { return a[0] <= b[1] && b[0] <= a[1] }
 function xrange_overlaps(a: Rangef, b: Rangef) { return a[0] < b[1] && b[0] < a[1] }
 function range_center(r: Rangef) { return (r[0] + r[1]) / 2 }
@@ -34,10 +36,11 @@ function range_lerp(r: Rangef, t: float) { return lerp(r[0], r[1], t) }
 function range_unlerp(r: Rangef, t: float) { return unlerp(r[0], r[1], t) }
 function range_clamp(r: Rangef, t: float) { return clamp(t, r[0], r[1]) }
 function range_map(a: Rangef, b: Rangef, tb: float) { return range_lerp(a, range_unlerp(b, tb)) }
-function range_and(a: Rangef, b: Rangef): Rangef { return range_sany_min(range(max(a[0], b[0]), min(a[1], b[1]))) }
+function range_and(a: Rangef, b: Rangef): Rangef { return range(max(a[0], b[0]), min(a[1], b[1])) }
 function range_or(a: Rangef, b: Rangef): Rangef { return range(min(a[0], b[0]), max(a[1], b[1])) }
 function range_intersect(a: Rangef, b: Rangef, tb: float) { return range_map(range_and(a, b), b, tb) }
 
+function xrangeof(obj: { timestamp: float, duration: float }) { return xrange(obj.timestamp, obj.duration) }
 function xrange(start: float, len: float): Rangef { return range(start, start + len) }
 function range<T extends { from: float, to: float }>(a: T): Point
 function range(a: float, b: float): Point
@@ -45,8 +48,6 @@ function range(a: any, b?: any): Point {
     if (typeof a == 'number') return [a, b]
     return [a.from, a.to]
 }
-
-
 
 enum FitMethod {
     Stretch,      // Ignore aspect ratio
@@ -59,6 +60,13 @@ enum FitMethod {
 }
 
 
+function point(x: float, y: float): Point { return [x, y] }
+function rect(x: float, y: float, w: float, h: float): Rect { return [x, y, w, h] }
+function rect_clone(r: Rect): Rect { return [...r] }
+function rect_one(): Rect { return [0, 0, 1, 1] }
+function rect_zero(): Rect { return [0, 0, 0, 0] }
+function rect_canvas(c: Canvas): Rect { return rect(0, 0, c.canvas.width, c.canvas.height) }
+function rect_img(c: ImageBitmap): Rect { return rect(0, 0, c.width, c.height) }
 function rect_fit(src: Rect, dst: Rect, method = FitMethod.Contain) {
     const src_w = src[2], src_h = src[3], dst_w = dst[2], dst_h = dst[3]
 
@@ -298,7 +306,7 @@ interface Scene extends Resource {
     frames: (SceneFrame | undefined)[]
 }
 
-interface SceneCommand { res: Res, resTime: float, drect: Rect, srect: Rect, lineWidth: float, strokeStyle: string, fillStyle: string, opacity: float }
+interface SceneCommand { item: Item, res: Res, resTime: float, drect: Rect, srect: Rect, lineWidth: float, strokeStyle: string, fillStyle: string, opacity: float }
 interface SceneFrame { timestamp: float, duration: float, commands: SceneCommand[] }
 
 
@@ -327,4 +335,386 @@ const enum Prop {
 interface Anim { target: Item, keys: AnimKey[] }
 interface AnimKey { t: float, prop: Prop, value: float, ease?: Ease }
 
+function res_create_script(f: Function | string): ScriptRes | null {
+    if (f instanceof Function) return { type: ResType.Script, file: null, func: f as ScriptFn, canvas: canvas_create(256, 256) }
+    else {
+        f = eval(f)
+        if (!(f instanceof Function)) return null
+        else return { type: ResType.Script, file: null, func: f as ScriptFn, canvas: canvas_create(256, 256) }
+    }
+}
+function res_create_test(): TestRes { return { canvas: canvas_create(256, 256), file: null, fps: 1, height: 1, type: ResType.Test, width: 1 } }
+function res_create_video_mp4(info: Mp4Video) {
+    let chunks: VideoRes['chunks'] = []
+    const samples = info.samples
+    let sampleStart = 0, sampleEnd = 1//exlusive end
 
+    while (sampleStart < samples.length) {
+        while (sampleStart < samples.length && !samples[sampleStart].is_sync)
+            sampleStart++
+        while (sampleEnd < samples.length && (!samples[sampleEnd].is_sync || (sampleEnd - sampleStart) < 30))
+            sampleEnd++
+
+        let first = samples[sampleStart]
+
+        let chunk: VideoRes['chunks'][0] = {
+            timestamp: mp4_sample_pts(first), duration: mp4_sample_dur(first),
+            sampleStart, sampleEnd, frames: [],
+            loaded: false
+        }
+        chunks.push(chunk)
+        for (let i = sampleStart + 1; i < sampleEnd; i++)
+            chunk.duration += mp4_sample_dur(samples[i])
+
+        sampleStart = sampleEnd
+        sampleEnd = sampleStart + 1
+    }
+
+    if (chunks.length) {
+        chunks[0].timestamp = 0 //HACK
+        for (let i = 0; i < chunks.length - 1; i++)
+            chunks[i].duration = chunks[i + 1].timestamp - chunks[i].timestamp
+        chunks[chunks.length - 1].duration = info.duration - chunks[chunks.length - 1].timestamp //HACK
+    }
+
+    let r: VideoRes = {
+        type: ResType.Video, file: info.file, width: info.width, height: info.height, duration: info.duration, info,
+        fps: mp4_samples_fps(info.samples),
+        chunks, currentChunk: -1, queueChunk: [],
+        decoder: new VideoDecoder({
+            output: (v: VideoFrame) => {
+                createImageBitmap(v).then((bitmap) => {
+                    r.chunks[r.currentChunk].frames.push({ bitmap, timestamp: v.timestamp })
+                    v.close()
+                })
+            },
+            error: (e: DOMException) => { }
+        })
+    }
+    r.decoder.configure({ codec: info.codec, description: info.description });
+    return r
+}
+async function res_create(file: File, type: ResType = res_type(file.type)): Promise<Res | null> {
+    switch (type) {
+        case ResType.Video: return res_create_video_mp4(await mp4_info(file)) //TODO support others
+        case ResType.Image:
+            if (!file)
+                return null
+            let bitmap = await createImageBitmap(file)
+            return { type, file, bitmap, width: bitmap.width, height: bitmap.height }
+        case ResType.Script:
+            let text = await file.text()
+            return res_create_script(text)
+        case ResType.Test: return res_create_test()
+        case ResType.Scene: return null
+        case ResType.Unknown: return null
+    }
+}
+function res_type(t: string): ResType {
+    if (t.startsWith("video/")) return ResType.Video
+    if (t.startsWith("image/")) return ResType.Image
+    if (t == "text/javascript") return ResType.Script
+    // if (t === "image/svg+xml") return ResType.Svg
+    // if (t.startsWith("audio/")) return ResType.Audio
+    // if (t == 'text/plain') return ResType.Text
+    return ResType.Unknown
+}
+
+
+
+function res_len(res: Res): float {
+    switch (res.type) {
+        case ResType.Video: case ResType.Scene: return res.duration
+        case ResType.Image: case ResType.Script: case ResType.Test: return 1
+    }
+}
+function res_width(res: Res): float {
+    switch (res.type) {
+        case ResType.Video: case ResType.Scene: case ResType.Image: return res.width
+        case ResType.Script: case ResType.Test: return 256
+    }
+}
+function res_height(res: Res): float {
+    switch (res.type) {
+        case ResType.Video: case ResType.Scene: case ResType.Image: return res.height
+        case ResType.Script: case ResType.Test: return 256
+    }
+}
+function res_size(res: Res): Point { return [res_width(res), res_height(res)] }
+function res_rect(res: Res): Rect { return rect(0, 0, res_width(res), res_height(res)) }
+function res_fps(res: Res): float {
+    switch (res.type) {
+        case ResType.Video: case ResType.Scene: return res.fps
+        case ResType.Script: case ResType.Image: case ResType.Test: return 1
+    }
+}
+const SCENE_CHUNK_FRAMES = 45
+function res_chunk(res: Res, t: float): int {
+    t = clamp(t, 0, res_len(res))
+    switch (res.type) {
+        case ResType.Video:
+            for (let i = 0; i < res.chunks.length; i++) if (xrange_within(xrangeof(res.chunks[i]), t)) return i
+            return res.chunks.length - 1
+        case ResType.Scene: return Math.floor(t / SCENE_CHUNK_FRAMES / res.fps)
+        default: return 0
+    }
+}
+
+function res_xrange(res: Res, chunk: int) {
+    switch (res.type) {
+        case ResType.Video: return xrange(res.chunks[chunk].timestamp, res.chunks[chunk].duration)
+        case ResType.Scene: return xrange(chunk * SCENE_CHUNK_FRAMES / res.fps, SCENE_CHUNK_FRAMES / res.fps)
+        default: return xrange(chunk, 1)
+    }
+}
+
+function res_chunks(res: Res, from: float, to: float) {
+    let chunkA = res_chunk(res, from)
+    let chunkB = res_chunk(res, to)
+    let arr = []
+    for (let c = chunkA; c <= chunkB; c++) arr.push(c)
+    return arr
+}
+
+function res_xchunks(res: Res, start: float, len: float) {
+    let chunkA = res_chunk(res, start)
+    let chunkB = res_chunk(res, start + len)
+    //exlusive if to == chunkB.from
+    if (chunkB != -1 && res_xrange(res, chunkB)[0] == start + len)
+        chunkB--
+    let arr = []
+    for (let c = chunkA; c <= chunkB; c++) arr.push(c)
+    return arr
+}
+
+function res_chunk_deps(res: Res, chunk: int) {
+    let arr = [] as { res: Res, chunk: int }[]
+    switch (res.type) {
+        case ResType.Scene:
+            let time = res_xrange(res, chunk)
+            scene_iters(res, time[0], time[1], (i, itemFrom, itemTo) => {
+                let resFrom = item2res(i, itemFrom)
+                let resTo = item2res(i, itemTo)
+                let chunks = res_xchunks(i.res, resFrom, resTo - resFrom)
+                for (let c of chunks)
+                    arr.push({ res: i.res, chunk: c })
+            })
+            break
+    }
+    return arr
+}
+
+
+function res_chunk_cost(res: Res, i: int) {
+    switch (res.type) {
+        case ResType.Video: return (res.chunks[i].sampleEnd - res.chunks[i].sampleStart + 1) * res.width * res.height
+        case ResType.Scene: return res.items.length * res.anims.length * SCENE_CHUNK_FRAMES
+        case ResType.Image: return res.width * res.height
+        case ResType.Script: return 0
+        case ResType.Test: return 0
+    }
+}
+
+function scene_create(items: Item[] = [], fps: float = 30, width: int = 600, height: int = 800) {
+    let s = { type: ResType.Scene, file: null, items, anims: [], fps, width, height, duration: 0, layers: 0, frames: [], aspect: 0, canvas: canvas_create(256, 256) } as Scene
+    scene_validate(s)
+    return s
+}
+function scene_create_wrap(res: Res, fps?: float, width?: int, height?: int) {
+    switch (res.type) {
+        case ResType.Scene: if (fps == undefined) fps = res.fps
+        case ResType.Video: case ResType.Image:
+            if (width == undefined) width = res.width
+            if (height == undefined) height = res.height
+            break
+        case ResType.Script:
+        case ResType.Test:
+            if (width == undefined) width = 256
+            if (height == undefined) height = 256
+            break
+    }
+    return scene_create([item_create(res)], fps, width, height)
+}
+function scene_validate(s: Scene, reset = false) {
+    s.duration = reset ? 0 : s.duration
+    s.layers = 0
+    for (let i = 0; i < s.items.length; i++) {
+        let item = s.items[i]
+        s.duration = Math.max(s.duration, item.to)
+        s.layers = Math.max(s.layers, item.layer)
+    }
+    s.layers++
+    items_sort(s.items)
+    for (let a of s.anims)
+        a.keys.sort((a, b) => a.t - b.t)
+}
+function scene_iters(scene: Scene, from: float, to: float, callback: (item: Item, itemFrom: float, itemTo: float) => void) { return items_iters(scene.items, from, to, callback) }
+function scene_iter(scene: Scene, t: float, callback: (item: Item, itemTime: float) => void) { return items_iter(scene.items, t, callback) }
+function scene_is_ancestor(me: Scene, ancestor: Scene) {
+    if (me == ancestor) return true
+    for (let x of ancestor.items)
+        if (x.res.type == ResType.Scene) {
+            if (x.res == me) return true
+            if (scene_is_ancestor(me, x.res)) return true
+        }
+    return false
+}
+
+function item_create(res: Res, from?: float, to?: float, rect?: Rect, sfrom = 0, sto = 1, srect: Rect = rect_one()): Item {
+    if (from == undefined) from = 0
+    if (to == undefined) to = from + res_len(res)
+    if (rect == undefined) rect = [0, 0, ...res_size(res)]
+    return { res, from, to, sfrom, sto, srect, rect, layer: 0, fillStyle: [0.4, 0.4, 0.4, 1], strokeStyle: [0, 0, 0, 1], opacity: 1, lineWidth: 2 }
+}
+function items_sort(items: Item[]) { items.sort((a, b) => a.layer == b.layer ? a.from - b.from : a.layer - b.layer) }
+function item_clone(item: Item): Item {
+    let clone = { ...item }
+    clone.srect = rect_clone(item.srect)
+    clone.rect = rect_clone(item.rect)
+    return clone
+}
+function item2res(item: Item, itemTime: float) { return range_map(range(item.sfrom, item.sto), range(item), itemTime) * res_len(item.res) }
+function res2item(item: Item, resTime: float) { return range_map(range(item), range(item.sfrom, item.sto), resTime / res_len(item.res)) }
+
+
+
+const enum JobState { None, Queue, WaitingDeps, Running, Done }
+interface Job {
+    res: Res
+    chunk: int
+    deps: Job[]
+
+    resolve: Function
+    promise: Promise<any>
+    state: JobState
+    refcount: int
+    pinned?: boolean
+
+    loadite: float
+    cost: float
+    score: float
+}
+
+
+function item_prop(item: Item, prop: Prop) {
+    switch (prop) {
+        case Prop.DstX: return item.rect[0]
+        case Prop.DstY: return item.rect[1]
+        case Prop.DstW: return item.rect[2]
+        case Prop.DstH: return item.rect[3]
+        case Prop.SrcX: return item.srect[0]
+        case Prop.SrcY: return item.srect[1]
+        case Prop.SrcW: return item.srect[2]
+        case Prop.SrcH: return item.srect[3]
+        case Prop.Opacity: return item.opacity
+        case Prop.LineWidth: return item.lineWidth
+        case Prop.FillR: case Prop.FillG: case Prop.FillB: case Prop.FillA:
+            return item.fillStyle[prop - Prop.FillR]
+        case Prop.StrokeR: case Prop.StrokeG: case Prop.StrokeB: case Prop.StrokeA:
+            return item.strokeStyle[prop - Prop.StrokeR]
+    }
+    return 0
+}
+
+function item_propset(item: Item, prop: Prop, value: float) {
+    switch (prop) {
+        case Prop.DstX: item.rect[0] = value; break
+        case Prop.DstY: item.rect[1] = value; break
+        case Prop.DstW: item.rect[2] = value; break
+        case Prop.DstH: item.rect[3] = value; break
+        case Prop.SrcX: item.srect[0] = value; break
+        case Prop.SrcY: item.srect[1] = value; break
+        case Prop.SrcW: item.srect[2] = value; break
+        case Prop.SrcH: item.srect[3] = value; break
+        case Prop.Opacity: item.opacity = value; break
+        case Prop.LineWidth: item.lineWidth = value; break
+        case Prop.FillR: case Prop.FillG: case Prop.FillB: case Prop.FillA:
+            item.fillStyle[prop - Prop.FillR] = value
+            break
+        case Prop.StrokeR: case Prop.StrokeG: case Prop.StrokeB: case Prop.StrokeA:
+            item.strokeStyle[prop - Prop.StrokeR] = value
+            break
+    }
+}
+
+
+function anim_prop(anim: Anim, prop: Prop, itemTime: float, item: Item = anim.target) {
+    let keys = anim.keys
+    keys = keys.filter(x => x.prop == prop)
+
+    let t = itemTime / item_len(item)
+    let a, b
+
+    for (let i = 0; i < keys.length; i++) {
+        if (t >= keys[i].t) a = keys[i];
+        else { b = keys[i]; break; }
+    }
+
+    let va, vb, ta, tb, ease
+    if (a && b) {
+        ta = a.t, tb = b.t
+        va = a.value, vb = b.value
+        ease = a.ease
+    } else if (a) { //after last key
+        ta = a.t, tb = 1, ease = a.ease
+        va = a.value, vb = item_prop(item, prop)
+    } else if (b) { //before first key
+        ta = 0, tb = b.t, ease = b.ease
+        va = item_prop(item, prop), vb = b.value
+    }
+    else return item_prop(item, prop)
+
+    let at = clamp01(unlerp(ta, tb, t)) //TODO use wrap mode
+    return tween(va, vb, at, ease)
+}
+
+function anim_prop_color(anim: Anim, itemTime: float, c: Prop) {
+    let r = anim_prop(anim, c + 0, itemTime)
+    let g = anim_prop(anim, c + 1, itemTime)
+    let b = anim_prop(anim, c + 2, itemTime)
+    let a = anim_prop(anim, c + 3, itemTime)
+    return color(r, g, b, a)
+}
+
+function item_color(item: Item, c: Prop) {
+    let r = item_prop(item, c + 0)
+    let g = item_prop(item, c + 1)
+    let b = item_prop(item, c + 2)
+    let a = item_prop(item, c + 3)
+    return color(r, g, b, a)
+}
+
+function item_len(item: Item) { return item.to - item.from }
+function item_move(item: Item, newfrom: float) {
+    let len = item_len(item)
+    item.from = max(newfrom, 0)
+    item.to = item.from + len
+}
+function item_speed(item: Item) { return range_len(range(item.sfrom, item.sto)) / item_len(item) * res_len(item.res) }
+function item_clip_left(item: Item, newSfrom: float) {
+    newSfrom = clamp01(newSfrom / res_len(item.res))
+    let speed = item_speed(item)
+    let delta = newSfrom - item.sfrom
+    item.from += delta * speed
+    item.sfrom = newSfrom
+}
+function item_clip_right(item: Item, newSto: float) {
+    newSto = clamp01(newSto / res_len(item.res))
+    let speed = item_speed(item)
+    let delta = newSto - item.sto
+    item.to += delta * speed
+    item.sto = newSto
+}
+function items_iters(items: Item[], from: float, to: float, callback: (item: Item, itemFrom: float, itemTo: float) => void) {
+    let ts = range(from, to)
+    for (let item of items) {
+        let is = range(item)
+        let os = range_and(ts, is)
+        if (!range_sane(os)) continue
+        callback(item, os[0] - item.from, os[1] - item.from)
+    }
+}
+function items_iter(items: Item[], t: float, callback: (item: Item, itemTime: float) => void) {
+    for (let item of items)
+        if (within(item.from, item.to, t)) callback(item, t - item.from)
+}

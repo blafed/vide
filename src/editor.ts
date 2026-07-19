@@ -79,15 +79,12 @@ function text(el: HTMLInputElement) {
 }
 function btn(el: HTMLElement) {
     switch (el.id) {
-        case 'import':
-            id('file').click()
-            break
+        case 'import': id('file').click(); break
     }
 }
 function opt(el: HTMLSelectElement) { }
 function file(el: HTMLInputElement) {
-    if (el.files)
-        editor.import_many(el.files)
+    if (el.files) editor.import_many(el.files, editor.path)
     el.value = ''
 }
 
@@ -362,19 +359,72 @@ interface Asset {
 
 let editor: Editor
 class Editor {
+    path = ''
+    scene!: Scene
+    sceneAsset: Asset | null = null
+    dirty = { scene: true, assets: true, res: new Set<Res>(), asset: new Set<Asset>(), item: new Set<Item>(), track: new Set<int>(), }
+    tool = Tool.None
+    autotool = true
+
+    res: Res[] = []
+    assets: Asset[] = []
+    files: File[] = []
+
+    selAsset = new Set<Asset>()
+    selItem = new Set<Item>()
+
+    requested = false
+
+
+    log(msg: string, type: LogType) { console.log(type ? msg.toUpperCase() : msg); return null }
+    loge(msg: string) { return this.log(msg, LogType.Error) }
     repath(s: string) { }
-    import_many(files: FileList) { }
+    import(res: Res, path: string) { }
+    import_one(file: File, path: string) { }
+    import_many(files: FileList, path: string) { }
 
-    open_scene(a: Asset) { }
-    sel_asset(a: Asset, v: boolean) { }
-    sel_asset2(a: Asset, mode: SelectMode) { }
-    sel_item(item: Item, v: boolean) { }
-    sel_item2(item: Item, v: boolean) { }
-    sel_time(from: float, to: float) { }
+    new_asset(res: Res, path: string): Asset | null {
+        if (res.file && this.has_file(res.file)) return this.loge('file already imported ' + res.file.name)
+        if (this.has_path(path)) return this.loge('path already exist')
+        let asset: Asset = { path, res }
+        if (res.file) this.files.push(res.file)
+        this.assets.push(asset)
+        this.res.push(asset.res)
+        this.dirty_asset(asset)
+        this.dirty_res(res)
+        return asset
+    }
+    new_scene(path: string) { return this.new_asset(scene_create(), path) }
+    open_scene(a: Asset) {
+        if (a.res.type != ResType.Scene)
+            return this.loge('not a scene')
+        this.sceneAsset = a
+        this.scene = a.res
+        this.dirty_assets()
+        this.dirty_scene()
+        return this.scene
+    }
 
-    unsel_assets() { }
-    unsel_items() { }
-    unsel_time() { }
+    is_sel_asset(a: Asset) { return this.selAsset.has(a) }
+    is_sel_item(i: Item) { return this.selItem.has(i) }
+    sel_asset(a: Asset, v: boolean) { v ? this.selAsset.add(a) : this.selAsset.delete(a); this.dirty_asset(a) }
+    sel_asset2(a: Asset, mode: SelectMode) {
+        switch (mode) {
+            case SelectMode.Once: this.unsel_assets(); this.sel_asset(a, true); break
+            case SelectMode.Additive: this.sel_asset(a, true); break
+            case SelectMode.Toggle: this.sel_asset(a, !this.is_sel_asset(a)); break
+        }
+    }
+    sel_item(item: Item, v: boolean) { v ? this.selItem.add(item) : this.selItem.delete(item); this.dirty_item(item) }
+    sel_item2(item: Item, mode: SelectMode) {
+        switch (mode) {
+            case SelectMode.Once: this.unsel_items(); this.sel_item(item, true); break
+            case SelectMode.Additive: this.sel_item(item, true); break
+            case SelectMode.Toggle: this.sel_item(item, !this.is_sel_item(item)); break
+        }
+    }
+    unsel_assets() { this.selAsset.clear(); this.dirty_assets() }
+    unsel_items() { this.selItem.clear(); this.dirty_scene() }
 
     time(from: float, to: float) { }
     timeplay(from: float, to: float) { }
@@ -383,8 +433,38 @@ class Editor {
     playcur() { }
     playnext() { }
     playprev() { }
-    set_play(b: boolean) { }
+    playing(b: boolean) { }
 
     time_preplace() { } //initialize a displacement state
     time_displace(delta: float) { } //displaces current selected timeline stuff
+
+    dirty_scene() { this.dirty.scene = true; this.request() }
+    dirty_asset(x: Asset) { this.dirty.asset.add(x); this.request() }
+    dirty_res(x: Res) { this.dirty.res.add(x); this.request() }
+    dirty_item(x: Item) { this.dirty.item.add(x); this.request() }
+    dirty_track(x: int) { this.dirty.track.add(x); this.request() }
+    dirty_assets() { this.dirty.assets = true; this.request() }
+
+    request() {
+        if (!this.requested) {
+            requestAnimationFrame(() => {
+                this.requested = false
+                editor_update()
+            })
+            this.requested = true
+        }
+    }
+
+    gui2time(x: float): float { return x * this.scene.duration / id('tracks').clientWidth }
+    time2gui(t: float): float { return t * id('tracks').clientWidth / this.scene.duration }
+    gui2space(p: Point): Point { let c = id('main'); return point(p[0] * this.scene.width / c.clientWidth, p[1] * this.scene.height / c.clientHeight,) }
+    space2gui(p: Point): Point { let c = id('main'); return point(p[0] * c.clientWidth / this.scene.width, p[1] * c.clientHeight / this.scene.height,) }
+
+
+    has_path(str: string) { return this.assets.findIndex(x => x.path == str) != -1 }
+    has_file(f: File) { return this.files.findIndex(x => Editor.file_fingerprint(f) == Editor.file_fingerprint(x)) != -1 }
+    static file_fingerprint(f: File) { return `${f.name}|${f.size}|${f.lastModified}` }
+}
+
+function editor_update() {
 }

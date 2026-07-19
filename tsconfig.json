@@ -2,10 +2,10 @@
     "compilerOptions": {
         "target": "es2020",
         "module": "none",
-        "outFile": "script.js",
+        "outFile": "vide.js",
         "strict": true,
         "sourceMap": true,
-        "allowJs": false
+        "allowJs": false,
     },
     "include": [
         "src",
