@@ -279,9 +279,9 @@ interface VideoRes extends Resource {
 }
 interface ImageRes extends Resource {
     readonly type: ResType.Image
-    readonly bitmap: ImageBitmap
     readonly width: int
     readonly height: int
+    bitmap: ImageBitmap | null
 }
 
 type ScriptFn = (ctx: Canvas, t: float, dst: Rect) => void
@@ -344,59 +344,9 @@ function res_create_script(f: Function | string): ScriptRes | null {
     }
 }
 function res_create_test(): TestRes { return { canvas: canvas_create(256, 256), file: null, fps: 1, height: 1, type: ResType.Test, width: 1 } }
-function res_create_video_mp4(info: Mp4Video) {
-    let chunks: VideoRes['chunks'] = []
-    const samples = info.samples
-    let sampleStart = 0, sampleEnd = 1//exlusive end
-
-    while (sampleStart < samples.length) {
-        while (sampleStart < samples.length && !samples[sampleStart].is_sync)
-            sampleStart++
-        while (sampleEnd < samples.length && (!samples[sampleEnd].is_sync || (sampleEnd - sampleStart) < 30))
-            sampleEnd++
-
-        let first = samples[sampleStart]
-
-        let chunk: VideoRes['chunks'][0] = {
-            timestamp: mp4_sample_pts(first), duration: mp4_sample_dur(first),
-            sampleStart, sampleEnd, frames: [],
-            loaded: false
-        }
-        chunks.push(chunk)
-        for (let i = sampleStart + 1; i < sampleEnd; i++)
-            chunk.duration += mp4_sample_dur(samples[i])
-
-        sampleStart = sampleEnd
-        sampleEnd = sampleStart + 1
-    }
-
-    if (chunks.length) {
-        chunks[0].timestamp = 0 //HACK
-        for (let i = 0; i < chunks.length - 1; i++)
-            chunks[i].duration = chunks[i + 1].timestamp - chunks[i].timestamp
-        chunks[chunks.length - 1].duration = info.duration - chunks[chunks.length - 1].timestamp //HACK
-    }
-
-    let r: VideoRes = {
-        type: ResType.Video, file: info.file, width: info.width, height: info.height, duration: info.duration, info,
-        fps: mp4_samples_fps(info.samples),
-        chunks, currentChunk: -1, queueChunk: [],
-        decoder: new VideoDecoder({
-            output: (v: VideoFrame) => {
-                createImageBitmap(v).then((bitmap) => {
-                    r.chunks[r.currentChunk].frames.push({ bitmap, timestamp: v.timestamp })
-                    v.close()
-                })
-            },
-            error: (e: DOMException) => { }
-        })
-    }
-    r.decoder.configure({ codec: info.codec, description: info.description });
-    return r
-}
 async function res_create(file: File, type: ResType = res_type(file.type)): Promise<Res | null> {
     switch (type) {
-        case ResType.Video: return res_create_video_mp4(await mp4_info(file)) //TODO support others
+        case ResType.Video: return video_mp4_create(await mp4_info(file)) //TODO support others
         case ResType.Image:
             if (!file)
                 return null
@@ -577,25 +527,6 @@ function item2res(item: Item, itemTime: float) { return range_map(range(item.sfr
 function res2item(item: Item, resTime: float) { return range_map(range(item), range(item.sfrom, item.sto), resTime / res_len(item.res)) }
 
 
-
-const enum JobState { None, Queue, WaitingDeps, Running, Done }
-interface Job {
-    res: Res
-    chunk: int
-    deps: Job[]
-
-    resolve: Function
-    promise: Promise<any>
-    state: JobState
-    refcount: int
-    pinned?: boolean
-
-    loadite: float
-    cost: float
-    score: float
-}
-
-
 function item_prop(item: Item, prop: Prop) {
     switch (prop) {
         case Prop.DstX: return item.rect[0]
@@ -668,13 +599,26 @@ function anim_prop(anim: Anim, prop: Prop, itemTime: float, item: Item = anim.ta
     return tween(va, vb, at, ease)
 }
 
-function anim_prop_color(anim: Anim, itemTime: float, c: Prop) {
+function anim_color(anim: Anim, itemTime: float, c: Prop) {
     let r = anim_prop(anim, c + 0, itemTime)
     let g = anim_prop(anim, c + 1, itemTime)
     let b = anim_prop(anim, c + 2, itemTime)
     let a = anim_prop(anim, c + 3, itemTime)
     return color(r, g, b, a)
 }
+
+function scene_item_prop(scene: Scene, item: Item, prop: Prop, animTime: float) {
+    let anim = scene.anims.find(a => a.target == item)
+    if (!anim) return item_prop(item, prop)
+    return anim_prop(anim, prop, animTime)
+}
+
+function scene_item_color(scene: Scene, item: Item, prop: Prop, itemTime: float) {
+    let anim = scene.anims.find(a => a.target == item)
+    if (!anim) return item_color(item, prop)
+    return anim_color(anim, prop, itemTime)
+}
+
 
 function item_color(item: Item, c: Prop) {
     let r = item_prop(item, c + 0)
@@ -717,4 +661,281 @@ function items_iters(items: Item[], from: float, to: float, callback: (item: Ite
 function items_iter(items: Item[], t: float, callback: (item: Item, itemTime: float) => void) {
     for (let item of items)
         if (within(item.from, item.to, t)) callback(item, t - item.from)
+}
+
+
+
+
+const enum JobState { None, Queue, WaitingDeps, Running, Done }
+interface Job {
+    res: Res
+    chunk: int
+    deps: Job[]
+
+    resolve: Function
+    promise: Promise<any>
+    state: JobState
+    refcount: int
+    pinned?: boolean
+
+    loadite: float //load time in milliseconds
+    cost: float //fixed
+    score: float //current cost. usage ++ and decay over time, not constrainted
+}
+
+function video_mp4_create(info: Mp4Video) {
+    let chunks: VideoRes['chunks'] = []
+    const samples = info.samples
+    let sampleStart = 0, sampleEnd = 1//exlusive end
+
+    while (sampleStart < samples.length) {
+        while (sampleStart < samples.length && !samples[sampleStart].is_sync)
+            sampleStart++
+        while (sampleEnd < samples.length && (!samples[sampleEnd].is_sync || (sampleEnd - sampleStart) < 30))
+            sampleEnd++
+
+        if (sampleStart >= samples.length)
+            return null
+
+        let first = samples[sampleStart]
+
+        let chunk: VideoRes['chunks'][0] = {
+            timestamp: mp4_sample_pts(first), duration: mp4_sample_dur(first),
+            sampleStart, sampleEnd, frames: [],
+            loaded: false
+        }
+        chunks.push(chunk)
+        for (let i = sampleStart + 1; i < sampleEnd; i++)
+            chunk.duration += mp4_sample_dur(samples[i])
+
+        sampleStart = sampleEnd
+        sampleEnd = sampleStart + 1
+    }
+
+    if (chunks.length) {
+        chunks[0].timestamp = 0 //HACK
+        for (let i = 0; i < chunks.length - 1; i++)
+            chunks[i].duration = chunks[i + 1].timestamp - chunks[i].timestamp
+        chunks[chunks.length - 1].duration = info.duration - chunks[chunks.length - 1].timestamp //HACK
+    }
+
+    let r: VideoRes = {
+        type: ResType.Video, file: info.file, width: info.width, height: info.height, duration: info.duration, info,
+        fps: mp4_samples_fps(info.samples),
+        chunks, currentChunk: -1, queueChunk: [],
+        decoder: new VideoDecoder({
+            output: (v: VideoFrame) => {
+                let currentChunk = r.currentChunk
+                //TODO handle this should be awaitable, so flush wait until all is created
+                createImageBitmap(v).then((bitmap) => {
+                    r.chunks[currentChunk].frames.push({ bitmap, timestamp: v.timestamp })
+                    v.close()
+                })
+            },
+            error: (e: DOMException) => { }
+        })
+    }
+    r.decoder.configure({ codec: info.codec, description: info.description });
+    return r
+}
+
+function video_get_frame(v: VideoRes, t: float) {
+    let chunk = res_chunk(v, t)
+    if (chunk < 0 || !v.chunks[chunk].loaded)
+        return null
+
+    t *= 1000_000
+    let cur = null, max = Infinity
+    for (let f of v.chunks[chunk].frames) {
+        let d = abs(t - f.timestamp)
+        if (d < max) {
+            cur = f
+            max = d
+        }
+    }
+    return cur
+}
+async function video_load_chunk(v: VideoRes, chunk: int) {
+    if (v.chunks[chunk].loaded || chunk < 0 || v.queueChunk.includes(chunk) || v.currentChunk == chunk) return
+    else if (v.currentChunk < 0) {
+        v.currentChunk = chunk
+        await video_decode(v, chunk)
+    }
+    else v.queueChunk.unshift(chunk)
+}
+
+function video_unload_chunk(v: VideoRes, chunk: int) {
+    //TODO unload while being loaded
+    v.queueChunk = v.queueChunk.filter(x => x != chunk)
+    v.chunks[chunk].frames.forEach(x => x.bitmap.close())
+    v.chunks[chunk].frames.length = 0
+    v.chunks[chunk].loaded = false
+}
+
+async function video_decode(v: VideoRes, chunk: int) {
+    let from = v.chunks[chunk].sampleStart
+    let to = v.chunks[chunk].sampleEnd
+    let samples = v.info.samples
+    for (let i = from; i < to; i++) {
+        let sample = samples[i]
+        v.decoder.decode(
+            new EncodedVideoChunk({
+                type: sample.is_sync ? 'key' : 'delta',
+                timestamp: mp4_sample_pts(sample) * 1000_000,
+                duration: mp4_sample_dur(sample) * 1000_000,
+                data: sample.data
+            })
+        )
+    }
+    await v.decoder.flush()
+    let c = v.chunks[chunk]
+    c.frames.sort((a, b) => a.timestamp - b.timestamp)
+    c.loaded = true
+
+    if (v.queueChunk.length > 0) {
+        v.currentChunk = v.queueChunk.shift()!
+        video_decode(v, v.currentChunk)
+    }
+    else v.currentChunk = -1
+}
+
+
+
+function res_draw(res: Res, ctx: Canvas, t: float, dst: Rect = rect_canvas(ctx), src?: Rect): boolean {
+    switch (res.type) {
+        case ResType.Video:
+            let frame = video_get_frame(res, t)
+            if (frame) canvas_draw_img3(ctx, frame.bitmap, dst, src)
+            return frame != null
+        case ResType.Image:
+            if (res.bitmap) canvas_draw_img3(ctx, res.bitmap, dst, src)
+            return res.bitmap != null
+        case ResType.Test:
+            {
+                let tc = res.canvas
+                canvas_prep(tc, dst[2], dst[3])
+                canvas_clear_all(tc)
+                let ctx2 = tc
+                let gr = ctx2.createLinearGradient(0, 0, tc.canvas.width, tc.canvas.height)
+                t *= 10
+                for (let i = 0; i < 6; i++) {
+                    let p = i / 5
+                    let brightness = .7
+                    let r = (cos(t + p * PI * 2) * .5 + .5) * 255 * brightness
+                    let g = (cos(t + p * PI * 2 + PI * 2 / 3) * .5 + .5) * 255 * brightness
+                    let b = (cos(t + p * PI * 2 + PI * 4 / 3) * .5 + .5) * 255 * brightness
+
+                    gr.addColorStop(p, `rgb(${r | 0},${g | 0},${b | 0})`)
+                }
+                ctx2.fillStyle = gr;
+                ctx2.fillRect(0, 0, tc.canvas.width, tc.canvas.height);
+                canvas_draw_img3(ctx, tc.canvas, dst, src);
+            }
+            return true
+        case ResType.Script:
+            {
+                let tc = res.canvas
+                canvas_prep(tc, dst[2], dst[3])
+                canvas_clear_all(tc)
+                tc.strokeStyle = ctx.strokeStyle
+                tc.fillStyle = ctx.fillStyle
+                tc.lineWidth = ctx.lineWidth
+                tc.globalAlpha = ctx.globalAlpha
+                res.func(tc, t, rect_canvas(tc))
+                canvas_draw_img3(ctx, tc.canvas, dst, src)
+            }
+            return true
+        case ResType.Scene:
+            let tc = res.canvas
+            canvas_prep(tc, res.width, res.height)
+            canvas_clear_all(tc)
+
+            let sample = res.frames[floor(res.fps * t)]
+            if (!sample)
+                return false
+
+            for (let x of sample.commands) {
+                tc.fillStyle = x.fillStyle
+                tc.strokeStyle = x.strokeStyle
+                tc.lineWidth = x.lineWidth
+                tc.globalAlpha = x.opacity
+                res_draw(x.res, tc, x.resTime, x.drect, x.srect)
+            }
+
+            canvas_draw_img3(ctx, tc.canvas, dst, src)
+            return true
+    }
+}
+
+
+async function res_load(res: Res, chunk: int) {
+    switch (res.type) {
+        case ResType.Video: await video_load_chunk(res, chunk); break
+        case ResType.Scene:
+            scene_validate(res)
+            let [from, to] = res_xrange(res, chunk)
+            canvas_prep(res.canvas, res.width, res.height)
+            let sampleStart = floor(from * res.fps), sampleEnd = floor(sampleStart + SCENE_CHUNK_FRAMES), dt = 1 / res.fps
+            for (let sample = sampleStart; sample < sampleEnd; sample++) {
+                let timestamp = sample / res.fps
+                res.frames[sample] = { commands: [], timestamp, duration: dt }
+
+                for (let item of res.items) {
+                    if (item.from > to || item.to < from)
+                        continue
+
+                    let t = unlerp(item.from, item.to, timestamp)
+
+                    let opacity = scene_item_prop(res, item, Prop.Opacity, t)
+                    let srcX = scene_item_prop(res, item, Prop.SrcX, t)
+                    let srcY = scene_item_prop(res, item, Prop.SrcY, t)
+                    let srcW = scene_item_prop(res, item, Prop.SrcW, t)
+                    let srcH = scene_item_prop(res, item, Prop.SrcH, t)
+                    let dstX = scene_item_prop(res, item, Prop.DstX, t)
+                    let dstY = scene_item_prop(res, item, Prop.DstY, t)
+                    let dstW = scene_item_prop(res, item, Prop.DstW, t)
+                    let dstH = scene_item_prop(res, item, Prop.DstH, t)
+                    let lineWidth = scene_item_prop(res, item, Prop.LineWidth, t)
+                    let fillStyle = scene_item_color(res, item, t, Prop.FillR)
+                    let strokeStyle = scene_item_color(res, item, t, Prop.StrokeR)
+
+                    let W = res_width(item.res)
+                    let H = res_height(item.res)
+
+                    res.frames[sample]!.commands.push({
+                        res: item.res, item,
+                        drect: [dstX, dstY, dstW, dstH],
+                        srect: [srcX * W, srcY * H, srcW * W, srcH * H],
+                        opacity: opacity,
+                        fillStyle: fillStyle,
+                        strokeStyle: strokeStyle,
+                        lineWidth: lineWidth,
+                        resTime: item2res(item, timestamp)
+                    })
+                }
+            }
+            break
+        case ResType.Image:
+            if (!res.bitmap && res.file)
+                res.bitmap = await createImageBitmap(res.file)
+            break
+        case ResType.Script: break
+        case ResType.Test: break
+    }
+}
+
+function res_unload(res: Res, chunk: int) {
+    switch (res.type) {
+        case ResType.Video: video_unload_chunk(res, chunk); break
+        case ResType.Scene:
+            let [from, to] = res_xrange(res, chunk)
+            let sampleFrom = from * res.fps, sampleTo = to * res.fps
+            for (let i = sampleFrom; i < sampleTo; i++)
+                res.frames[i] = undefined
+            break
+        case ResType.Image:
+            res.bitmap?.close()
+            res.bitmap = null
+            break
+    }
 }
