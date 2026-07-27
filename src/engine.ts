@@ -663,26 +663,6 @@ function items_iter(items: Item[], t: float, callback: (item: Item, itemTime: fl
         if (within(item.from, item.to, t)) callback(item, t - item.from)
 }
 
-
-
-
-const enum JobState { None, Queue, WaitingDeps, Running, Done }
-interface Job {
-    res: Res
-    chunk: int
-    deps: Job[]
-
-    resolve: Function
-    promise: Promise<any>
-    state: JobState
-    refcount: int
-    pinned?: boolean
-
-    loadite: float //load time in milliseconds
-    cost: float //fixed
-    score: float //current cost. usage ++ and decay over time, not constrainted
-}
-
 function video_mp4_create(info: Mp4Video) {
     let chunks: VideoRes['chunks'] = []
     const samples = info.samples
@@ -937,5 +917,207 @@ function res_unload(res: Res, chunk: int) {
             res.bitmap?.close()
             res.bitmap = null
             break
+    }
+}
+
+
+const enum JobState { None, Queue, WaitingDeps, Running, Done }
+interface Job {
+    res: Res
+    chunk: int
+    deps: Job[]
+
+    resolve: Function
+    promise: Promise<any>
+    state: JobState
+    refcount: int
+    pinned?: boolean
+
+    loadite: float //load time in milliseconds
+    cost: float //fixed
+    score: float //current cost. usage ++ and decay over time, not constrainted
+}
+
+
+
+
+
+
+class Jobs {
+    queue = new Map<Res, Job[]>() //list of awaiting, gets shifted then processed
+    jobs = new Map<Res, Map<int, Job>>() //list of ever
+    workers = new Set<Res>()
+
+
+    async load(res: Res, from: float, to: float) {
+        let chunks = res_chunks(res, from, to)
+        let jobs: Job[] = []
+        for (let c of chunks) {
+            let job = this.register(res, c)
+            jobs.push(job)
+            this.enqueue_job(job)
+        }
+
+        await Promise.all(jobs.map(j => j.promise))
+    }
+
+    async load_chunk(res: Res, chunk: int) {
+        let job = this.register(res, chunk)
+        this.enqueue_job(job)
+        await job.promise
+        return job
+    }
+
+    private get_job(res: Res, chunk: int) {
+        let map = this.jobs.get(res)
+        if (!map) return null
+        return map.get(chunk)
+    }
+
+    pin(res: Res, chunk: int) {
+        let j = this.get_job(res, chunk)
+        if (j) j.pinned = true
+    }
+
+    unpin(res: Res, chunk: int) {
+        let j = this.get_job(res, chunk)
+        if (j) j.pinned = false
+    }
+
+    unload(res: Res, from: float, to: float) {
+        let chunks = res_chunks(res, from, to)
+        for (let c of chunks)
+            this.unload_chunk(res, c)
+    }
+
+    unload_chunk(res: Res, chunk: int) {
+        let job = this.get_job(res, chunk)
+        if (job)
+            this.remove(job)
+    }
+
+    remove(job: Job) {
+        if (job.state != JobState.Done)
+            return
+
+        let map = this.jobs.get(job.res)
+        if (!map)
+            return
+        map.delete(job.chunk)
+        for (let x of job.deps)
+            x.refcount--
+        if (map.size == 0)
+            this.jobs.delete(job.res)
+        res_unload(job.res, job.chunk)
+    }
+
+
+    private register(res: Res, chunk: int) {
+        let map = this.jobs.get(res)
+
+        if (!map) this.jobs.set(res, map = new Map())
+        else {
+            let job = map.get(chunk)
+            if (job) {
+                job.score = Math.min(10, job.score + 1)
+                return job
+            }
+        }
+
+        let job: Job = this.make_job(res, chunk)
+        job.score = Math.min(10, job.score + 1)
+        map.set(chunk, job)
+
+        let deps = res_chunk_deps(res, chunk)
+        for (let x of deps) {
+            let sub = this.register(x.res, x.chunk)
+            sub.refcount++
+
+            job.deps.push(sub)
+        }
+
+        return job
+    }
+
+    unload_unrefed(res: Res) {
+        let map = this.jobs.get(res)
+        if (!map)
+            return
+        let stack = []
+        for (let job of map.values())
+            if (!job.pinned && job.refcount == 0)
+                stack.push(job)
+        for (let job of stack)
+            this.remove(job)
+        return stack
+    }
+
+    unload_all(res: Res) {
+        let map = this.jobs.get(res)
+        if (!map)
+            return
+        let stack = [...map.values()]
+        for (let job of stack)
+            this.remove(job)
+    }
+
+
+    private enqueue_job(job: Job) {
+        if (job.state != JobState.Queue && job.state != JobState.None)
+            return
+        let q = this.queue.get(job.res)
+        if (!q) this.queue.set(job.res, q = [])
+        let index = job.state == JobState.Queue ? q.indexOf(job) : -1
+
+
+        if (index == -1)
+            q.unshift(job)
+        else {
+            let tmp = q[0]
+            q[0] = job
+            q[index] = tmp
+        }
+
+        if (job.state == JobState.None) {
+            job.state = JobState.Queue
+            for (let x of job.deps)
+                this.enqueue_job(x)
+        }
+
+        this.res_worker(job.res)
+    }
+
+
+    private async res_worker(res: Res) {
+        if (this.workers.has(res))
+            return
+
+        this.workers.add(res)
+        let jobs = this.queue.get(res)
+        if (jobs)
+            await this.worker(jobs)
+        this.workers.delete(res)
+        this.queue.delete(res)
+    }
+
+    private async worker(jobs: Job[]) {
+        while (jobs.length) {
+            let job = jobs.shift()!
+            job.state = JobState.WaitingDeps
+            await Promise.all(job.deps.map(j => j.promise))
+            job.state = JobState.Running
+            let now = performance.now()
+            await res_load(job.res, job.chunk)
+            job.loadite = performance.now() - now
+            job.state = JobState.Done
+            job.resolve()
+        }
+    }
+
+    private make_job(res: Res, chunk: int) {
+        let resolve!: Function
+        let promise = new Promise(res => resolve = res)
+        let job: Job = { res, chunk, deps: [], resolve, promise, state: JobState.None, refcount: 0, loadite: 0, cost: res_chunk_cost(res, chunk), score: 0 }
+        return job
     }
 }
