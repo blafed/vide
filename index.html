@@ -1,6 +1,8 @@
 <head>
     <link rel="stylesheet" href="style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <title>VIDE</title>
 </head>
 
 <body data-theme="dark">
@@ -23,12 +25,21 @@
     </div>
 
     <div class="panel">
-        <div id="preview"></div>
-        <div id="timeline" class="comp">
+        <!-- <div id="preview"></div> -->
+        <div style="padding: 2px;">
+            <button id="notool" onclick="btn(this)" title="Split"><img src="svg/add.svg" /></button>
+            <button id="split" onclick="btn(this)" title="Split"><img src="svg/split.svg" /></button>
+            <button id="delete" onclick="btn(this)" title="Delete"><img src="svg/delete.svg" /></button>
+        </div>
+
+        <div style="position: relative;">
+            <div id="timeview" class="comp"></div>
+        </div>
+        <!-- <div id="timeline" class="comp">
             <canvas></canvas>
             <div class="caret"></div>
             <div class="sight"></div>
-        </div>
+        </div> -->
         <div style="position: relative;">
             <div class="container comp" id="tracks">
                 <div class="track comp container">

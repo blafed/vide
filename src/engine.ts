@@ -509,6 +509,18 @@ function scene_is_ancestor(me: Scene, ancestor: Scene) {
         }
     return false
 }
+function scene_layer(scene: Scene, layer: int) { return scene.items.filter(i => i.layer == layer) }
+function scene_layers(scene: Scene): Item[][] {
+    let arr: Item[][] = []
+    for (let i = 0; i < scene.layers; i++) arr.push([])
+    for (let item of scene.items) arr[item.layer].push(item)
+    return arr
+}
+function scene_layers_int(s: Scene): int[] {
+    let arr: int[] = []
+    for (let i = 0; i < s.layers; i++) arr.push(i)
+    return arr
+}
 
 function item_create(res: Res, from?: float, to?: float, rect?: Rect, sfrom = 0, sto = 1, srect: Rect = rect_one()): Item {
     if (from == undefined) from = 0
@@ -635,6 +647,24 @@ function item_move(item: Item, newfrom: float) {
     item.to = item.from + len
 }
 function item_speed(item: Item) { return range_len(range(item.sfrom, item.sto)) / item_len(item) * res_len(item.res) }
+function item_respeed(item: Item, speed: float, pivotTime: float) {
+    if (speed <= 0)
+        return;
+    let oldLen = item_len(item)
+    let srcLen = range_len(range(item.sfrom, item.sto))
+    let newLen = srcLen / speed
+    let t = (pivotTime - item.from) / oldLen
+
+    item.from = pivotTime - t * newLen
+    item.to = item.from + newLen
+}
+function item_split(item: Item, t: float): [Item, Item] {
+    let ratio = t / item_len(item)
+    let newSto = lerp(item.sfrom, item.sto, ratio)
+    let a = item_create(item.res, item.from, item.from + t, item.rect, item.sfrom, newSto, item.srect)
+    let b = item_create(item.res, a.to, item.to, item.rect, newSto, item.sto, item.srect)
+    return [a, b];
+}
 function item_clip_left(item: Item, newSfrom: float) {
     newSfrom = clamp01(newSfrom / res_len(item.res))
     let speed = item_speed(item)
@@ -795,20 +825,8 @@ function res_draw(res: Res, ctx: Canvas, t: float, dst: Rect = rect_canvas(ctx),
                 let tc = res.canvas
                 canvas_prep(tc, dst[2], dst[3])
                 canvas_clear_all(tc)
-                let ctx2 = tc
-                let gr = ctx2.createLinearGradient(0, 0, tc.canvas.width, tc.canvas.height)
-                t *= 10
-                for (let i = 0; i < 6; i++) {
-                    let p = i / 5
-                    let brightness = .7
-                    let r = (cos(t + p * PI * 2) * .5 + .5) * 255 * brightness
-                    let g = (cos(t + p * PI * 2 + PI * 2 / 3) * .5 + .5) * 255 * brightness
-                    let b = (cos(t + p * PI * 2 + PI * 4 / 3) * .5 + .5) * 255 * brightness
-
-                    gr.addColorStop(p, `rgb(${r | 0},${g | 0},${b | 0})`)
-                }
-                ctx2.fillStyle = gr;
-                ctx2.fillRect(0, 0, tc.canvas.width, tc.canvas.height);
+                tc.fillStyle = `rgba(${t * 255},255,255,255)`
+                tc.fillRect(0, 0, tc.canvas.width, tc.canvas.height)
                 canvas_draw_img3(ctx, tc.canvas, dst, src);
             }
             return true
@@ -844,6 +862,19 @@ function res_draw(res: Res, ctx: Canvas, t: float, dst: Rect = rect_canvas(ctx),
 
             canvas_draw_img3(ctx, tc.canvas, dst, src)
             return true
+    }
+}
+
+function res_draw_track(res: Res, ctx: Canvas, from: float, to: float, dst: Rect = rect_canvas(ctx), src?: Rect) {
+    switch (res.type) {
+        case ResType.Test:
+            for (let i = dst[0]; i < dst[2]; i++) {
+                let t = lerp(from, to, i / dst[2])
+                ctx.fillStyle = `hsl(${255 * t}, 100%, 50%)`
+                ctx.fillRect(dst[0] + i, dst[1], 1, dst[3])
+            }
+            break;
+        default: res_draw(res, ctx, 0, undefined, src); //TODO implement for others
     }
 }
 

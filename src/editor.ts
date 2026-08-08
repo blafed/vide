@@ -80,6 +80,10 @@ function text(el: HTMLInputElement) {
 function btn(el: HTMLElement) {
     switch (el.id) {
         case 'import': id('file').click(); break
+        case 'notool':
+        case 'split':
+        case 'delete':
+            editor.lock_tool(name2tool(el.id))
     }
 }
 function opt(el: HTMLSelectElement) { }
@@ -103,10 +107,6 @@ interface Pointer {
     datatransfer: DataTransfer | null
     isDrag: boolean
 }
-
-function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) { }
-function datadrop(p: Pointer, el: HTMLElement, mode: PointerMode.DragStart | PointerMode.DragEnd | PointerMode.Drop) { }
-
 
 
 function event_pointer_drag(ev: DragEvent) {
@@ -322,6 +322,7 @@ const enum Tool {
     ItemRelayer,
     ItemRespeed,
     ItemSplit,
+    ItemDelete,
 
     TrackMerge,
     TrackUngap,
@@ -357,36 +358,57 @@ interface Asset {
     thumb?: ImageBitmap
 }
 
+interface EditorItem extends Item {
+    selFrom: float
+}
+
 let editor: Editor
 class Editor {
+    thumbCtx: Canvas = canvas_create(64, 64)
+    jobs = new Jobs()
     path = ''
     scene!: Scene
     sceneAsset: Asset | null = null
-    dirty = { scene: true, assets: true, res: new Set<Res>(), asset: new Set<Asset>(), item: new Set<Item>(), track: new Set<int>(), }
-    tool = Tool.None
+    dirty = { scene: true, assets: true, res: new Set<Res>(), asset: new Set<Asset>(), item: new Set<Item>(), track: new Set<int>(), timeview: true }
+    tool = Tool.None; toolLock = false
     autotool = true
 
     res: Res[] = []
     assets: Asset[] = []
     files: File[] = []
 
+    duration = 2; from = 0; to = 2 //the current timeview
+
     selAsset = new Set<Asset>()
     selItem = new Set<Item>()
 
     requested = false
 
+    constructor() {
+        this.request()
+    }
 
     log(msg: string, type: LogType) { console.log(type ? msg.toUpperCase() : msg); return null }
     loge(msg: string) { return this.log(msg, LogType.Error) }
     repath(s: string) { }
-    import(res: Res, path: string) { }
-    import_one(file: File, path: string) { }
-    import_many(files: FileList, path: string) { }
+    import(res: Res, path: string) {
+        let asset = this.new_asset(res, path)
+    }
+    async import_one(file: File, path: string) {
+        let res = await res_create(file)
+        if (!res) this.loge('invalid file ' + file.name)
+        else this.import(res, path)
+    }
+    async import_many(files: FileList, path: string) {
+        let all = Array.from(files).map(x => this.import_one(x, path + x.name))
+        await Promise.all(all);
+    }
 
     new_asset(res: Res, path: string): Asset | null {
         if (res.file && this.has_file(res.file)) return this.loge('file already imported ' + res.file.name)
         if (this.has_path(path)) return this.loge('path already exist')
         let asset: Asset = { path, res }
+        this.generate_thumb(asset)
         if (res.file) this.files.push(res.file)
         this.assets.push(asset)
         this.res.push(asset.res)
@@ -405,6 +427,65 @@ class Editor {
         return this.scene
     }
 
+    generate_thumb(asset: Asset) {
+        let res = asset.res
+        this.jobs.load(res, 0, 1).then(() => {
+            this.thumbCtx.canvas.width = res_width(res), this.thumbCtx.canvas.height = res_height(res)
+            res_draw(res, this.thumbCtx, 0)
+            createImageBitmap(this.thumbCtx.canvas).then(x => {
+                asset.thumb = x
+                this.dirty_asset(asset)
+            })
+        })
+    }
+
+    add_item(res: Res, layer: int, at: float): Item {
+        let item = item_create(res, at)
+        item.layer = layer
+        this.scene.items.push(item)
+        scene_validate(this.scene)
+        this.dirty_scene()
+        return item
+    }
+    move_item(item: Item, newFrom: float) {
+        item_move(item, newFrom)
+        scene_validate(this.scene)
+        this.dirty_scene()
+    }
+    clip_item_left(item: Item, shift: float) {
+        item_clip_left(item, shift)
+        scene_validate(this.scene)
+        this.dirty_scene()
+    }
+    clip_item_right(item: Item, shift: float) {
+        item_clip_right(item, shift)
+        scene_validate(this.scene)
+        this.dirty_scene()
+    }
+    respeed_item(item: Item, newSpeed: float) {
+        item_respeed(item, newSpeed, item.from)
+        scene_validate(this.scene)
+        this.dirty_scene()
+    }
+    remove_item(item: Item) {
+        this.scene.items.splice(this.scene.items.indexOf(item), 1)
+        scene_validate(this.scene)
+        this.dirty_scene()
+    }
+    split_item(item: Item, t: float) {
+        console.log('splitting ', t)
+        let split = item_split(item, t)
+        this.scene.items.splice(this.scene.items.indexOf(item), 1)
+        this.scene.items.push(...split)
+        scene_validate(this.scene)
+        this.dirty_scene()
+    }
+
+    set_tool(tool: Tool) { this.tool = tool, this.request() }
+    lock_tool(tool: Tool) { this.set_tool(tool), this.toolLock = tool != Tool.None; }
+    unlock_tool() { this.toolLock = false; this.reset_tool() }
+    reset_tool() { this.tool = 0 }
+
     is_sel_asset(a: Asset) { return this.selAsset.has(a) }
     is_sel_item(i: Item) { return this.selItem.has(i) }
     sel_asset(a: Asset, v: boolean) { v ? this.selAsset.add(a) : this.selAsset.delete(a); this.dirty_asset(a) }
@@ -415,7 +496,10 @@ class Editor {
             case SelectMode.Toggle: this.sel_asset(a, !this.is_sel_asset(a)); break
         }
     }
-    sel_item(item: Item, v: boolean) { v ? this.selItem.add(item) : this.selItem.delete(item); this.dirty_item(item) }
+    sel_item(item: Item, v: boolean) {
+        v ? this.selItem.add(item) : this.selItem.delete(item); this.dirty_item(item);
+        (item as EditorItem).selFrom = item.from;
+    }
     sel_item2(item: Item, mode: SelectMode) {
         switch (mode) {
             case SelectMode.Once: this.unsel_items(); this.sel_item(item, true); break
@@ -445,6 +529,13 @@ class Editor {
     dirty_track(x: int) { this.dirty.track.add(x); this.request() }
     dirty_assets() { this.dirty.assets = true; this.request() }
 
+    get_current_assets() { return this.assets.filter(x => x.path.startsWith(this.path)) }
+    get_asset_name(a: Asset) { return a.path.includes('/') ? a.path.split('/')[1] : a.path }
+
+    get_tracks() { return scene_layers(this.scene) }
+    get_tracks_int() { return scene_layers_int(this.scene) }
+    get_track(i: int) { return scene_layer(this.scene, i) }
+
     request() {
         if (!this.requested) {
             requestAnimationFrame(() => {
@@ -455,10 +546,12 @@ class Editor {
         }
     }
 
-    gui2time(x: float): float { return x * this.scene.duration / id('tracks').clientWidth }
-    time2gui(t: float): float { return t * id('tracks').clientWidth / this.scene.duration }
+    gui2time(x: float): float { return x * this.duration / id('tracks').clientWidth }
+    time2gui(t: float): float { return t * id('tracks').clientWidth / this.duration }
     gui2space(p: Point): Point { let c = id('main'); return point(p[0] * this.scene.width / c.clientWidth, p[1] * this.scene.height / c.clientHeight,) }
     space2gui(p: Point): Point { let c = id('main'); return point(p[0] * c.clientWidth / this.scene.width, p[1] * c.clientHeight / this.scene.height,) }
+
+    timeview(from: float, to: float) { this.from = from, this.to = to, this.dirty.timeview = true, this.request() }
 
 
     has_path(str: string) { return this.assets.findIndex(x => x.path == str) != -1 }
@@ -466,5 +559,207 @@ class Editor {
     static file_fingerprint(f: File) { return `${f.name}|${f.size}|${f.lastModified}` }
 }
 
+const GUI = {
+    TRACK_HEIGHT: 68
+}
+
 function editor_update() {
+    var e = editor
+
+    if (e.dirty.timeview) {
+        e.dirty.timeview = false
+        var el = id('timeview')
+        el.style.left = e.time2gui(e.from) + 'px'
+        el.style.width = e.time2gui(e.to - e.from) + 'px'
+    }
+
+    if (e.dirty.asset) {
+        let arr = [...e.dirty.asset]
+        update_over(id('assets'), arr, gui_update_asset)
+        e.dirty.asset.clear()
+    }
+
+    if (e.dirty.assets)
+        update_over(id('assets'), editor.get_current_assets(), gui_update_asset)
+
+    if (e.dirty.scene)
+        update_over(id('tracks'), editor.get_tracks_int(), gui_update_track)
+
+    buttons()
+}
+
+
+function buttons() {
+    let buttons = document.getElementsByTagName('button')
+
+    for (let button of buttons) {
+        set_highlight(button, editor.toolLock && editor.tool == name2tool(button.id))
+    }
+    set_highlight(id('notool'), !editor.toolLock)
+}
+
+function gui_update_asset(a: Asset, el: HTMLElement) {
+    let c = canvas(el)!
+    canvas_resize_dpr(c)
+    canvas_clear_all(c)
+    if (a.thumb) {
+        let src = rect_img(a.thumb), dst = rect_canvas(c)
+        rect_fit(src, dst, FitMethod.Contain)
+        canvas_draw_img2(c, a.thumb, dst, src)
+    }
+    let text = class1('name', el)
+    text.innerText = editor.get_asset_name(a)
+    class_toggle(el, 'high', editor.is_sel_asset(a))
+    ent(el, a)
+}
+
+function gui_update_track(l: int, el: HTMLElement) {
+    let items = editor.get_track(l)
+    update_over(el, items, gui_update_item)
+    ent(el, l)
+}
+
+function gui_update_item(item: Item, el: HTMLElement) {
+    let c = canvas(el)!
+    el.style.width = editor.time2gui(item.to - item.from) + 'px'
+    el.style.left = editor.time2gui(item.from) + 'px'
+
+    res_draw_track(item.res, c, item.sfrom, item.sto)
+    ent(el, item)
+}
+
+
+
+function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
+
+    const on = (mode: PointerMode, id?: string, klass?: string) => {
+        return mode == mode && (id ? el.id == id : klass ? el.classList.contains(klass) : true)
+    }
+
+    let asset = el.classList.contains('asset') ? ent1<Asset>(el) : null
+    let track = el.classList.contains('track') ? ent1<int>(el) : null
+    let item = el.classList.contains('item') ? ent1<Item>(el) : null
+    let itemTime = item ? editor.gui2time(p.ex) : 0
+    let assets = el.id == 'assets'
+    let tracks = el.id == 'tracks' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
+
+    let tool = editor.tool
+    switch (editor.tool) {
+        case Tool.None: {
+            if (assets != null && mode == PointerMode.Down)
+                editor.unsel_assets()
+            if (asset != null && asset != null) {
+                if (mode == PointerMode.Down) {
+                    editor.unsel_assets()
+                    editor.sel_asset(asset, true)
+                } else if (mode == PointerMode.DragStart)
+                    editor.set_tool(Tool.AssetDrag)
+            }
+            if (item != null) {
+                //TODO there is double selection for items underneath
+                if (mode == PointerMode.Down)
+                    editor.sel_item(item, true)
+                else if (mode == PointerMode.Up)
+                    editor.sel_item(item, false)
+                else if (mode == PointerMode.DragStart)
+                    editor.set_tool(Tool.ItemMove)
+            }
+        }
+            break;
+        case Tool.AssetDrag:
+            if ((track != null || tracks != null) && mode == PointerMode.Drop) {
+                editor.reset_tool()
+                for (let x of editor.selAsset) editor.add_item(x.res, track ?? tracks!, editor.gui2time(p.cx))
+            }
+            break;
+        case Tool.ItemMove:
+            if (mode == PointerMode.DragEnd)
+                editor.reset_tool()
+            if (editor.selItem.size > 1)
+                console.log('some shit', editor.selItem);
+            for (let x of editor.selItem)
+                editor.move_item(x, (x as EditorItem).selFrom + editor.gui2time(p.dx))
+            break;
+        case Tool.ItemDelete:
+            if (mode == PointerMode.Down) {
+                if (item != null) {
+                    editor.remove_item(item)
+                }
+            }
+            break
+        case Tool.ItemSplit:
+            if (mode == PointerMode.Down) {
+                if (item != null)
+                    editor.split_item(item, itemTime)
+            }
+            break
+    }
+
+    // if (el.id == 'assets') {
+    //     if (mode == PointerMode.Down)
+    //         editor.unsel_assets()
+    // }
+
+    // if (el.classList.contains('asset')) {
+    //     if (mode == PointerMode.Down)
+    //         editor.sel_asset(ent1(el), true)
+    //     else if (mode == PointerMode.DragStart)
+    //         editor.set_tool(Tool.AssetDrag)
+    // }
+
+    // if (el.id == 'tracks') {
+    //     let layer = floor(p.cy / GUI.TRACK_HEIGHT)
+    //     if (mode == PointerMode.Drop)
+    //         switch (tool) {
+    //             case Tool.AssetDrag:
+    //                 editor.reset_tool()
+    //                 for (let x of editor.selAsset) editor.add_item(x.res, layer, editor.gui2time(p.cx))
+    //                 break
+    //         }
+    // }
+
+    // if (el.classList.contains('track')) {
+    //     let layer: int = ent1(el)
+    //     if (mode == PointerMode.Drop) {
+    //         switch (tool) {
+    //             case Tool.AssetDrag:
+    //                 editor.reset_tool()
+    //                 for (let x of editor.selAsset) editor.add_item(x.res, layer, editor.gui2time(p.cx))
+    //                 break
+    //         }
+    //     }
+    //     if (mode == PointerMode.Drag) {
+    //         switch (tool) {
+    //             case Tool.ItemMove:
+    //                 for (let x of editor.selItem) editor.move_item(x, layer, editor.gui2time(p.cx))
+    //                 break
+    //         }
+    //     }
+    // }
+
+    // if (el.classList.contains('item')) {
+    //     let item = ent1(el)
+    //     if (mode == PointerMode.DragStart) {
+    //         editor.set_tool(Tool.ItemMove)
+    //     }
+    // }
+}
+function datadrop(p: Pointer, el: HTMLElement, mode: PointerMode.DragStart | PointerMode.DragEnd | PointerMode.Drop) { }
+
+
+function name2tool(name: string): Tool {
+    switch (name) {
+        case 'split': return Tool.ItemSplit
+        case 'delete': return Tool.ItemDelete
+        default: return Tool.None
+    }
+}
+
+
+function tool2name(tool: Tool): string {
+    switch (tool) {
+        case Tool.ItemSplit: return 'split'
+        case Tool.ItemDelete: return 'delete'
+        default: return ''
+    }
 }
