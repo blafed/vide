@@ -485,7 +485,7 @@ function scene_create_wrap(res: Res, fps?: float, width?: int, height?: int) {
     }
     return scene_create([item_create(res)], fps, width, height)
 }
-function scene_validate(s: Scene, reset = false) {
+function scene_validate(s: Scene, reset = true) {
     s.duration = reset ? 0 : s.duration
     s.layers = 0
     for (let i = 0; i < s.items.length; i++) {
@@ -495,8 +495,7 @@ function scene_validate(s: Scene, reset = false) {
     }
     s.layers++
     items_sort(s.items)
-    for (let a of s.anims)
-        a.keys.sort((a, b) => a.t - b.t)
+    anims_sort(s.anims)
 }
 function scene_iters(scene: Scene, from: float, to: float, callback: (item: Item, itemFrom: float, itemTo: float) => void) { return items_iters(scene.items, from, to, callback) }
 function scene_iter(scene: Scene, t: float, callback: (item: Item, itemTime: float) => void) { return items_iter(scene.items, t, callback) }
@@ -512,13 +511,16 @@ function scene_is_ancestor(me: Scene, ancestor: Scene) {
 function scene_layer(scene: Scene, layer: int) { return scene.items.filter(i => i.layer == layer) }
 function scene_layers(scene: Scene): Item[][] {
     let arr: Item[][] = []
-    for (let i = 0; i < scene.layers; i++) arr.push([])
-    for (let item of scene.items) arr[item.layer].push(item)
+    for (let item of scene.items) {
+        let a = arr[item.layer]
+        if (!a) arr.push(a = [])
+        a.push(item)
+    }
     return arr
 }
-function scene_layers_int(s: Scene): int[] {
-    let arr: int[] = []
-    for (let i = 0; i < s.layers; i++) arr.push(i)
+function scene_layers_int(s: Scene): Set<int> {
+    let arr = new Set<int>()
+    for (let item of scene.items) arr.add(item.layer)
     return arr
 }
 
@@ -529,6 +531,7 @@ function item_create(res: Res, from?: float, to?: float, rect?: Rect, sfrom = 0,
     return { res, from, to, sfrom, sto, srect, rect, layer: 0, fillStyle: [0.4, 0.4, 0.4, 1], strokeStyle: [0, 0, 0, 1], opacity: 1, lineWidth: 2 }
 }
 function items_sort(items: Item[]) { items.sort((a, b) => a.layer == b.layer ? a.from - b.from : a.layer - b.layer) }
+function anims_sort(anims: Anim[]) { for (let a of anims) a.keys.sort((a, b) => a.t - b.t) }
 function item_clone(item: Item): Item {
     let clone = { ...item }
     clone.srect = rect_clone(item.srect)
@@ -663,6 +666,7 @@ function item_split(item: Item, t: float): [Item, Item] {
     let newSto = lerp(item.sfrom, item.sto, ratio)
     let a = item_create(item.res, item.from, item.from + t, item.rect, item.sfrom, newSto, item.srect)
     let b = item_create(item.res, a.to, item.to, item.rect, newSto, item.sto, item.srect)
+    a.layer = b.layer = item.layer
     return [a, b];
 }
 function item_clip_left(item: Item, newSfrom: float) {
@@ -825,7 +829,7 @@ function res_draw(res: Res, ctx: Canvas, t: float, dst: Rect = rect_canvas(ctx),
                 let tc = res.canvas
                 canvas_prep(tc, dst[2], dst[3])
                 canvas_clear_all(tc)
-                tc.fillStyle = `rgba(${t * 255},255,255,255)`
+                tc.fillStyle = `hsl(${255 * t}, 100%, 50%)`
                 tc.fillRect(0, 0, tc.canvas.width, tc.canvas.height)
                 canvas_draw_img3(ctx, tc.canvas, dst, src);
             }
@@ -878,6 +882,19 @@ function res_draw_track(res: Res, ctx: Canvas, from: float, to: float, dst: Rect
     }
 }
 
+function res_draw_thumb(res: Res, ctx: Canvas, dst: Rect = rect_canvas(ctx)) {
+    switch (res.type) {
+        case ResType.Test:
+            let lin = ctx.createLinearGradient(dst[0], dst[1], dst[2], dst[3])
+            lin.addColorStop(0, `hsl(0, 100%, 50%)`)
+            lin.addColorStop(1, `hsl(120, 100%, 50%)`)
+            ctx.fillStyle = lin
+            canvas_fill_rect(ctx, dst)
+            break
+        default: res_draw(res, ctx, min(0.1, res_len(res)), dst)
+    }
+}
+
 
 async function res_load(res: Res, chunk: int) {
     switch (res.type) {
@@ -892,7 +909,7 @@ async function res_load(res: Res, chunk: int) {
                 res.frames[sample] = { commands: [], timestamp, duration: dt }
 
                 for (let item of res.items) {
-                    if (item.from > to || item.to < from)
+                    if (item.from > timestamp || item.to < timestamp)
                         continue
 
                     let t = unlerp(item.from, item.to, timestamp)
@@ -912,8 +929,7 @@ async function res_load(res: Res, chunk: int) {
 
                     let W = res_width(item.res)
                     let H = res_height(item.res)
-
-                    res.frames[sample]!.commands.push({
+                    let command: SceneCommand = {
                         res: item.res, item,
                         drect: [dstX, dstY, dstW, dstH],
                         srect: [srcX * W, srcY * H, srcW * W, srcH * H],
@@ -922,7 +938,8 @@ async function res_load(res: Res, chunk: int) {
                         strokeStyle: strokeStyle,
                         lineWidth: lineWidth,
                         resTime: item2res(item, timestamp)
-                    })
+                    }
+                    res.frames[sample]!.commands.push(command)
                 }
             }
             break

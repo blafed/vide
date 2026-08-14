@@ -1,13 +1,13 @@
-let entitys = new Map<EventTarget, any>()
+let entitys = new Map<HTMLElement, any>()
 
 function id<T extends HTMLElement>(id: string) { return document.getElementById(id)! as T }
-function classes(c: string, within: HTMLElement | Document = document): Array<HTMLElement> {
+function classes(c: string, within: HTMLElement = document.body): Array<HTMLElement> {
     let arr = []
     let list = within.getElementsByClassName(c)
     for (let e = 0; e < list.length; ++e) arr.push(<HTMLElement>list[e])
     return arr
 }
-function class1(c: string, within: HTMLElement) { return classes(c, within)[0]! }
+function class1(c: string, within: HTMLElement = document.body) { return classes(c, within)[0]! }
 function prevent(e: Event) {
     e.stopPropagation()
     e.preventDefault()
@@ -51,7 +51,7 @@ function event_closest(ev: Event, selector: string) {
         return null
     return target.closest(selector) as HTMLElement
 }
-function ent<T>(el: EventTarget, set?: T): T | null {
+function ent<T>(el: HTMLElement, set?: T): T | null {
     if (set != undefined) {
         (el as any)._ent = set //useless; only for debug
         entitys.set(el, set)
@@ -60,10 +60,16 @@ function ent<T>(el: EventTarget, set?: T): T | null {
         return entitys.get(el)
     }
 }
-function ent1<T>(el: EventTarget): T {
+function ent1<T>(el: HTMLElement): T {
     let e = ent<T>(el)
     if (e != undefined) return e
     else throw new Error('no entity ' + el)
+}
+function dent<T>(e: T): HTMLElement | null {
+    for (let x of entitys)
+        if (x[1] == e)
+            return x[0]
+    return null
 }
 
 
@@ -83,7 +89,10 @@ function btn(el: HTMLElement) {
         case 'notool':
         case 'split':
         case 'delete':
-            editor.lock_tool(name2tool(el.id))
+            editor.lock_tool(name2tool(el.id)); break
+        case 'play': editor.play(!editor.isplaying); break
+        case 'next': editor.playnext(); break
+        case 'prev': editor.playprev(); break
     }
 }
 function opt(el: HTMLSelectElement) { }
@@ -364,28 +373,36 @@ interface EditorItem extends Item {
 
 let editor: Editor
 class Editor {
+    renderCtx: Canvas = canvas(id('main'))!
     thumbCtx: Canvas = canvas_create(64, 64)
     jobs = new Jobs()
     path = ''
     scene!: Scene
     sceneAsset: Asset | null = null
-    dirty = { scene: true, assets: true, res: new Set<Res>(), asset: new Set<Asset>(), item: new Set<Item>(), track: new Set<int>(), timeview: true }
+    dirty = { scene: true, assets: true, res: new Set<Res>(), asset: new Set<Asset>(), item: new Set<Item>(), track: new Set<int>(), timeview: true, timeplay: true, time: true, render: true }
     tool = Tool.None; toolLock = false
-    autotool = true
 
     res: Res[] = []
     assets: Asset[] = []
     files: File[] = []
 
-    duration = 2; from = 0; to = 2 //the current timeview
+    from = 0; to = 2 //the current timeview
+    time = 0; mintime = 0; maxtime = 2
+    isplaying = false
 
     selAsset = new Set<Asset>()
     selItem = new Set<Item>()
 
     requested = false
 
+    framegives = { set: new Set(), next: 1 }
+
+    timeviewGuiWidth = id('tracks').clientWidth
+
     constructor() {
         this.request()
+        this.framegive((dt) => this.loopplay(dt))
+        canvas_resize_dpr(this.renderCtx)
     }
 
     log(msg: string, type: LogType) { console.log(type ? msg.toUpperCase() : msg); return null }
@@ -431,7 +448,7 @@ class Editor {
         let res = asset.res
         this.jobs.load(res, 0, 1).then(() => {
             this.thumbCtx.canvas.width = res_width(res), this.thumbCtx.canvas.height = res_height(res)
-            res_draw(res, this.thumbCtx, 0)
+            res_draw_thumb(res, this.thumbCtx)
             createImageBitmap(this.thumbCtx.canvas).then(x => {
                 asset.thumb = x
                 this.dirty_asset(asset)
@@ -439,8 +456,8 @@ class Editor {
         })
     }
 
-    add_item(res: Res, layer: int, at: float): Item {
-        let item = item_create(res, at)
+    add_item(res: Res, layer: int, at: float, dst = res_rect(res)): Item {
+        let item = item_create(res, at, undefined, dst)
         item.layer = layer
         this.scene.items.push(item)
         scene_validate(this.scene)
@@ -510,48 +527,100 @@ class Editor {
     unsel_assets() { this.selAsset.clear(); this.dirty_assets() }
     unsel_items() { this.selItem.clear(); this.dirty_scene() }
 
-    time(from: float, to: float) { }
-    timeplay(from: float, to: float) { }
-    untimeplay() { }
-    play(t: float) { }
-    playcur() { }
-    playnext() { }
-    playprev() { }
-    playing(b: boolean) { }
+
+    framegive(cb: (dt: float) => boolean | void) {
+        let last: number | null = null
+        let id = this.framegives.next++
+        this.framegives.set.add(id)
+        const loop = (now: number) => {
+            if (!this.framegives.set.has(id)) return
+            if (last !== null && !cb((now - last) / 1000)) return
+            last = now, requestAnimationFrame(loop)
+        }
+        requestAnimationFrame(loop)
+        return id
+    }
+    render(t: float, ctx: Canvas, border: boolean) {
+        var dst = rect_canvas(ctx)
+        var src = res_rect(this.scene)
+        rect_fit(src, dst, FitMethod.Contain)
+        canvas_clear_all(ctx)
+        res_draw(this.scene, ctx, t, dst, src)
+        if (border) {
+            this.renderCtx.strokeStyle = '#aaa', this.renderCtx.lineWidth = 1
+            canvas_stroke_rect(this.renderCtx, dst)
+        }
+        return dst
+    }
+    unframegive(id: number) { this.framegives.set.delete(id) }
+    retime(t: float, snap = false) {
+        this.time = clamp(t, this.mintime, this.maxtime)
+        if (snap)
+            this.time = floor(this.time * this.scene.fps) / this.scene.fps
+        this.dirty_time()
+    }
+    loopplay(dt: float) {
+        if (this.isplaying) {
+            this.time += dt
+            if (this.time > this.maxtime)
+                this.time = this.mintime
+            this.retime(this.time)
+        }
+        return true
+    }
+    play(b: boolean) { this.isplaying = b, this.request() }
+
+    // time(from: float, to: float) { }
+    // timeplay(from: float, to: float) { }
+    // untimeplay() { }
+    // playcur() { }
+    playnext() { this.retime(this.time + 1 / this.scene.fps, true) }
+    playprev() { this.retime(this.time - 1 / this.scene.fps, true) }
+    // playing(b: boolean) { }
 
     time_preplace() { } //initialize a displacement state
     time_displace(delta: float) { } //displaces current selected timeline stuff
 
-    dirty_scene() { this.dirty.scene = true; this.request() }
+    dirty_scene() { res_load(this.scene, 0); this.dirty.scene = true; this.request() }
     dirty_asset(x: Asset) { this.dirty.asset.add(x); this.request() }
     dirty_res(x: Res) { this.dirty.res.add(x); this.request() }
     dirty_item(x: Item) { this.dirty.item.add(x); this.request() }
     dirty_track(x: int) { this.dirty.track.add(x); this.request() }
     dirty_assets() { this.dirty.assets = true; this.request() }
+    dirty_time() { this.dirty.time = true; this.request() }
 
     get_current_assets() { return this.assets.filter(x => x.path.startsWith(this.path)) }
     get_asset_name(a: Asset) { return a.path.includes('/') ? a.path.split('/')[1] : a.path }
 
     get_tracks() { return scene_layers(this.scene) }
-    get_tracks_int() { return scene_layers_int(this.scene) }
+    get_tracks_int() { return [...scene_layers_int(this.scene)] }
     get_track(i: int) { return scene_layer(this.scene, i) }
 
     request() {
+        this.dirty.render = this.dirty.render || this.dirty.item.size > 0 || this.dirty.time || this.dirty.scene
         if (!this.requested) {
             requestAnimationFrame(() => {
                 this.requested = false
+                if (this.dirty.render) {
+                    this.dirty.render = false
+                    this.render(this.time, this.renderCtx, true)
+                }
                 editor_update()
             })
             this.requested = true
         }
     }
 
-    gui2time(x: float): float { return x * this.duration / id('tracks').clientWidth }
-    time2gui(t: float): float { return t * id('tracks').clientWidth / this.duration }
+    gui2time(x: float): float { return lerp(this.from, this.to, unlerp(0, this.timeviewGuiWidth, x)) }
+    time2gui(t: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(this.from, this.to, t)) }
+    timelen2guilen(tlen: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.to - this.from, tlen)) }
+    scenetime2gui(tlen: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.scene.duration, tlen)) }
+
     gui2space(p: Point): Point { let c = id('main'); return point(p[0] * this.scene.width / c.clientWidth, p[1] * this.scene.height / c.clientHeight,) }
     space2gui(p: Point): Point { let c = id('main'); return point(p[0] * c.clientWidth / this.scene.width, p[1] * c.clientHeight / this.scene.height,) }
 
-    timeview(from: float, to: float) { this.from = from, this.to = to, this.dirty.timeview = true, this.request() }
+    timeview(from: float, to: float) { this.from = from, this.to = to, this.dirty.timeview = true, this.dirty.time = true, this.request() }
+    timeplay(from: float, to: float) { this.mintime = from, this.maxtime = to, this.dirty.timeplay = true, this.dirty.time = true, this.request() }
 
 
     has_path(str: string) { return this.assets.findIndex(x => x.path == str) != -1 }
@@ -596,6 +665,8 @@ function buttons() {
         set_highlight(button, editor.toolLock && editor.tool == name2tool(button.id))
     }
     set_highlight(id('notool'), !editor.toolLock)
+
+    set_highlight(id('play'), editor.isplaying)
 }
 
 function gui_update_asset(a: Asset, el: HTMLElement) {
@@ -664,6 +735,8 @@ function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
                 else if (mode == PointerMode.DragStart)
                     editor.set_tool(Tool.ItemMove)
             }
+            if (tracks != null && mode == PointerMode.Drag)
+                editor.retime(editor.gui2time(p.cx))
         }
             break;
         case Tool.AssetDrag:
