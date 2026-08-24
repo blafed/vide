@@ -90,7 +90,7 @@ button:disabled{cursor: default; opacity: 0.4; border-color: transparent;}
 .from{left: 0;}
 
 #carret,#carret2,.caret span{position: absolute; top: 0; left: 50%; }
-.caret{position: absolute; top: 0;left: 0; cursor: ew-resize; transform: translate(-2px);height: 100%; width: 2px; background-color: var(--warn); }
+.caret{position: absolute; top: 0;left: 0; cursor: ew-resize; height: 100%; width: 1px; background-color: var(--warn); }
 /* .caret span{position: absolute; top: 0; left: 0; } */
 
 #notif{visibility: hidden;}

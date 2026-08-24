@@ -76,7 +76,6 @@ function dent<T>(e: T): HTMLElement | null {
 //======================
 //#region INPUT
 //======================
-
 function text(el: HTMLInputElement) {
     let value = el.value
     switch (el.id) {
@@ -88,8 +87,7 @@ function btn(el: HTMLElement) {
         case 'import': id('file').click(); break
         case 'notool':
         case 'split':
-        case 'delete':
-            editor.lock_tool(name2tool(el.id)); break
+        case 'delete': editor.lock_tool(name2tool(el.id)); break
         case 'play': editor.play(!editor.isplaying); break
         case 'next': editor.playnext(); break
         case 'prev': editor.playprev(); break
@@ -178,7 +176,6 @@ function on_dragdrop(ev: DragEvent) {
         on_dragend(ev)
     }
 }
-
 
 function on_down(e: PointerEvent) {
     if (event_native(e))
@@ -307,8 +304,8 @@ function pointer_set_xy(p: Pointer, ev: PointerEvent) {
     p.y = ev.clientY
     p.dx = p.x - p.ox
     p.dy = p.y - p.oy
-    if (p.cur) {
-        let bound = p.cur.getBoundingClientRect()
+    if (p.down) {
+        let bound = p.down.getBoundingClientRect()
         p.cx = p.x - bound.left
         p.cy = p.y - bound.top
     }
@@ -326,21 +323,25 @@ const enum Tool {
     Import,
     AssetDrag,
     ItemMove,
-    ItemSetLeft,
-    ItemSetRight,
+    // ItemSetLeft,
+    // ItemSetRight,
     ItemRelayer,
-    ItemRespeed,
+    // ItemRespeed,
     ItemSplit,
     ItemDelete,
 
-    TrackMerge,
-    TrackUngap,
-    TrackUngapLeft,
-    TrackCut,
+    Retime,
 
-    TimelineViewMove,
-    TimelineViewLeft,
-    TimelineViewRight,
+    TimeviewMove,
+
+    // TrackMerge,
+    // TrackUngap,
+    // TrackUngapLeft,
+    // TrackCut,
+
+    // TimelineViewMove,
+    // TimelineViewLeft,
+    // TimelineViewRight,
 }
 
 function init_input() {
@@ -387,8 +388,17 @@ class Editor {
     files: File[] = []
 
     from = 0; to = 2 //the current timeview
-    time = 0; mintime = 0; maxtime = 2
+    time = 0; mintime = 0; maxtime = 2 //play
+    duration = 2; layers = 3; //questionable
     isplaying = false
+    tracks: Item[][] = []
+
+    //memo are assigned by input, to calc between 2 input calls
+    memox: float | null = null
+    memoy: float | null = null
+    memot: float | null = null
+
+    get timescale() { return (this.to - this.from) / this.duration }
 
     selAsset = new Set<Asset>()
     selItem = new Set<Item>()
@@ -440,7 +450,7 @@ class Editor {
         this.sceneAsset = a
         this.scene = a.res
         this.dirty_assets()
-        this.dirty_scene()
+        this.changed_scene()
         return this.scene
     }
 
@@ -456,38 +466,51 @@ class Editor {
         })
     }
 
+    private changed_scene() {
+        scene_validate(this.scene)
+        this.duration = this.scene.duration + 2
+        this.layers = this.scene.layers + 2
+        this.tracks.length = this.layers
+        for (let i = 0; i < this.layers; i++) this.tracks[i] = this.scene.items.filter(x => x.layer == i)
+        this.dirty_scene()
+    }
+
     add_item(res: Res, layer: int, at: float, dst = res_rect(res)): Item {
         let item = item_create(res, at, undefined, dst)
         item.layer = layer
         this.scene.items.push(item)
-        scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
         return item
     }
     move_item(item: Item, newFrom: float) {
         item_move(item, newFrom)
         scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
+    }
+    relayer_item(item: Item, layer: int) {
+        item.layer = layer
+        console.log(item.layer)
+        this.changed_scene()
     }
     clip_item_left(item: Item, shift: float) {
         item_clip_left(item, shift)
         scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
     }
     clip_item_right(item: Item, shift: float) {
         item_clip_right(item, shift)
         scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
     }
     respeed_item(item: Item, newSpeed: float) {
         item_respeed(item, newSpeed, item.from)
         scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
     }
     remove_item(item: Item) {
         this.scene.items.splice(this.scene.items.indexOf(item), 1)
         scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
     }
     split_item(item: Item, t: float) {
         console.log('splitting ', t)
@@ -495,7 +518,7 @@ class Editor {
         this.scene.items.splice(this.scene.items.indexOf(item), 1)
         this.scene.items.push(...split)
         scene_validate(this.scene)
-        this.dirty_scene()
+        this.changed_scene()
     }
 
     set_tool(tool: Tool) { this.tool = tool, this.request() }
@@ -525,7 +548,7 @@ class Editor {
         }
     }
     unsel_assets() { this.selAsset.clear(); this.dirty_assets() }
-    unsel_items() { this.selItem.clear(); this.dirty_scene() }
+    unsel_items() { this.selItem.clear(); this.changed_scene() }
 
 
     framegive(cb: (dt: float) => boolean | void) {
@@ -553,7 +576,7 @@ class Editor {
         return dst
     }
     unframegive(id: number) { this.framegives.set.delete(id) }
-    retime(t: float, snap = false) {
+    retime(t: float, snap = true) {
         this.time = clamp(t, this.mintime, this.maxtime)
         if (snap)
             this.time = floor(this.time * this.scene.fps) / this.scene.fps
@@ -564,7 +587,7 @@ class Editor {
             this.time += dt
             if (this.time > this.maxtime)
                 this.time = this.mintime
-            this.retime(this.time)
+            this.retime(this.time, false)
         }
         return true
     }
@@ -580,8 +603,9 @@ class Editor {
 
     time_preplace() { } //initialize a displacement state
     time_displace(delta: float) { } //displaces current selected timeline stuff
+    //TODO fix the loaading, bad getting chunks from the scene duration
 
-    dirty_scene() { res_load(this.scene, 0); this.dirty.scene = true; this.request() }
+    dirty_scene() { this.jobs.unload_all(this.scene); this.jobs.load(this.scene, 0, this.scene.duration); this.dirty.scene = true; this.request() }
     dirty_asset(x: Asset) { this.dirty.asset.add(x); this.request() }
     dirty_res(x: Res) { this.dirty.res.add(x); this.request() }
     dirty_item(x: Item) { this.dirty.item.add(x); this.request() }
@@ -592,9 +616,9 @@ class Editor {
     get_current_assets() { return this.assets.filter(x => x.path.startsWith(this.path)) }
     get_asset_name(a: Asset) { return a.path.includes('/') ? a.path.split('/')[1] : a.path }
 
-    get_tracks() { return scene_layers(this.scene) }
-    get_tracks_int() { return [...scene_layers_int(this.scene)] }
-    get_track(i: int) { return scene_layer(this.scene, i) }
+    get_tracks() { return this.tracks }
+    get_tracks_int() { return this.tracks.map((x, i) => i) }
+    get_track(i: int) { return this.tracks[i] }
 
     request() {
         this.dirty.render = this.dirty.render || this.dirty.item.size > 0 || this.dirty.time || this.dirty.scene
@@ -611,16 +635,33 @@ class Editor {
         }
     }
 
+    time_s2vg(t: float) { return this.time_v2g(this.time_s2v(t)) }
+    time_s2v(t: float) { return lerp(this.from, this.to, t - this.from) }
+    time_s2g(t: float) { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.duration, t)) }
+    time_v2g(t: float) { return lerp(0, this.timeviewGuiWidth, unlerp(this.from, this.to, t)) }
+    time_g2s(x: float) { return lerp(0, this.duration, unlerp(0, this.timeviewGuiWidth, x)) }
+    time_g2v(x: float) { return lerp(this.from, this.to, unlerp(0, this.timeviewGuiWidth, x)) }
+
     gui2time(x: float): float { return lerp(this.from, this.to, unlerp(0, this.timeviewGuiWidth, x)) }
     time2gui(t: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(this.from, this.to, t)) }
-    timelen2guilen(tlen: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.to - this.from, tlen)) }
-    scenetime2gui(tlen: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.scene.duration, tlen)) }
+    // timelen2guilen(tlen: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.to - this.from, tlen)) }
+    scene2gui(tlen: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.duration, tlen)) }
 
     gui2space(p: Point): Point { let c = id('main'); return point(p[0] * this.scene.width / c.clientWidth, p[1] * this.scene.height / c.clientHeight,) }
     space2gui(p: Point): Point { let c = id('main'); return point(p[0] * c.clientWidth / this.scene.width, p[1] * c.clientHeight / this.scene.height,) }
 
-    timeview(from: float, to: float) { this.from = from, this.to = to, this.dirty.timeview = true, this.dirty.time = true, this.request() }
+
+    timeview_move(delta?: float) {
+        if (delta != null) {
+            if (this.memot == null || this.memox == null) { this.memot = this.from; this.memox = this.to - this.from }
+            this.timeview(this.memot + delta, this.memot + this.memox + delta)
+        } else this.memot = null;
+    }
+    //TODO this is also calls timeplay, should be seperate
+    timeview(from: float, to: float) { this.from = from, this.to = to, this.dirty.timeview = true, this.dirty.time = true, this.timeplay(from, to), this.request() }
     timeplay(from: float, to: float) { this.mintime = from, this.maxtime = to, this.dirty.timeplay = true, this.dirty.time = true, this.request() }
+    timeview_full() { this.timeview(0, this.duration) }
+    timeview_scene() { this.timeview(0, this.scene.duration) }
 
 
     has_path(str: string) { return this.assets.findIndex(x => x.path == str) != -1 }
@@ -638,8 +679,16 @@ function editor_update() {
     if (e.dirty.timeview) {
         e.dirty.timeview = false
         var el = id('timeview')
-        el.style.left = e.time2gui(e.from) + 'px'
-        el.style.width = e.time2gui(e.to - e.from) + 'px'
+        el.style.left = e.scene2gui(e.from) + 'px'
+        el.style.width = e.scene2gui(e.to - e.from) + 'px'
+    }
+
+    if (e.dirty.time) {
+        e.dirty.time = false;
+        var el = id('track-caret')
+        el.style.left = e.time2gui(e.time) + 'px'
+        el = id('time-caret')
+        el.style.left = e.scene2gui(e.time) + 'px'
     }
 
     if (e.dirty.asset) {
@@ -692,8 +741,9 @@ function gui_update_track(l: int, el: HTMLElement) {
 
 function gui_update_item(item: Item, el: HTMLElement) {
     let c = canvas(el)!
-    el.style.width = editor.time2gui(item.to - item.from) + 'px'
-    el.style.left = editor.time2gui(item.from) + 'px'
+    el.style.width = editor.time_s2vg(item.to - item.from) + 'px'
+    el.style.left = editor.time_s2vg(item.from) + 'px'
+    console.log('shit happen', el.style.left, el.style.width)
 
     res_draw_track(item.res, c, item.sfrom, item.sto)
     ent(el, item)
@@ -711,32 +761,43 @@ function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
     let track = el.classList.contains('track') ? ent1<int>(el) : null
     let item = el.classList.contains('item') ? ent1<Item>(el) : null
     let itemTime = item ? editor.gui2time(p.ex) : 0
-    let assets = el.id == 'assets'
+    let assets = el.id == 'assets' ? true : null
     let tracks = el.id == 'tracks' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
+    let trackId = tracks != null ? tracks : track != null ? track : null
+    let timeview = el.id == 'timeview' ? true : null
+
 
     let tool = editor.tool
+
     switch (editor.tool) {
         case Tool.None: {
             if (assets != null && mode == PointerMode.Down)
                 editor.unsel_assets()
-            if (asset != null && asset != null) {
+            else if (asset != null) {
                 if (mode == PointerMode.Down) {
                     editor.unsel_assets()
                     editor.sel_asset(asset, true)
                 } else if (mode == PointerMode.DragStart)
                     editor.set_tool(Tool.AssetDrag)
             }
-            if (item != null) {
+            else if (item != null) {
                 //TODO there is double selection for items underneath
-                if (mode == PointerMode.Down)
+                if (mode == PointerMode.Down) {
+                    editor.unsel_items()
                     editor.sel_item(item, true)
+                }
                 else if (mode == PointerMode.Up)
                     editor.sel_item(item, false)
-                else if (mode == PointerMode.DragStart)
-                    editor.set_tool(Tool.ItemMove)
+                else if (mode == PointerMode.DragStart) {
+                    if (abs(p.dy) > abs(p.dx) * 3) editor.set_tool(Tool.ItemRelayer)
+                    else editor.set_tool(Tool.ItemMove)
+                }
             }
-            if (tracks != null && mode == PointerMode.Drag)
-                editor.retime(editor.gui2time(p.cx))
+            else if (track != null && mode == PointerMode.DragStart)
+                editor.set_tool(Tool.Retime)
+            else if (timeview != null && mode == PointerMode.DragStart)
+                editor.set_tool(Tool.TimeviewMove)
+
         }
             break;
         case Tool.AssetDrag:
@@ -766,56 +827,26 @@ function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
                     editor.split_item(item, itemTime)
             }
             break
+        case Tool.ItemRelayer:
+            if (mode == PointerMode.DragEnd)
+                editor.reset_tool()
+            if (trackId != null && editor.selItem.size > 0) {
+                for (let x of editor.selItem)
+                    editor.relayer_item(x, trackId)
+            }
+            break
+        case Tool.Retime:
+            if (mode == PointerMode.Drag)
+                editor.retime(editor.gui2time(p.cx))
+            else if (mode == PointerMode.DragEnd)
+                editor.reset_tool()
+            break
+        case Tool.TimeviewMove:
+            if (mode == PointerMode.Drag) {
+                editor.timeview_move(p.dx / editor.timeviewGuiWidth * editor.duration)
+            }
+            break
     }
-
-    // if (el.id == 'assets') {
-    //     if (mode == PointerMode.Down)
-    //         editor.unsel_assets()
-    // }
-
-    // if (el.classList.contains('asset')) {
-    //     if (mode == PointerMode.Down)
-    //         editor.sel_asset(ent1(el), true)
-    //     else if (mode == PointerMode.DragStart)
-    //         editor.set_tool(Tool.AssetDrag)
-    // }
-
-    // if (el.id == 'tracks') {
-    //     let layer = floor(p.cy / GUI.TRACK_HEIGHT)
-    //     if (mode == PointerMode.Drop)
-    //         switch (tool) {
-    //             case Tool.AssetDrag:
-    //                 editor.reset_tool()
-    //                 for (let x of editor.selAsset) editor.add_item(x.res, layer, editor.gui2time(p.cx))
-    //                 break
-    //         }
-    // }
-
-    // if (el.classList.contains('track')) {
-    //     let layer: int = ent1(el)
-    //     if (mode == PointerMode.Drop) {
-    //         switch (tool) {
-    //             case Tool.AssetDrag:
-    //                 editor.reset_tool()
-    //                 for (let x of editor.selAsset) editor.add_item(x.res, layer, editor.gui2time(p.cx))
-    //                 break
-    //         }
-    //     }
-    //     if (mode == PointerMode.Drag) {
-    //         switch (tool) {
-    //             case Tool.ItemMove:
-    //                 for (let x of editor.selItem) editor.move_item(x, layer, editor.gui2time(p.cx))
-    //                 break
-    //         }
-    //     }
-    // }
-
-    // if (el.classList.contains('item')) {
-    //     let item = ent1(el)
-    //     if (mode == PointerMode.DragStart) {
-    //         editor.set_tool(Tool.ItemMove)
-    //     }
-    // }
 }
 function datadrop(p: Pointer, el: HTMLElement, mode: PointerMode.DragStart | PointerMode.DragEnd | PointerMode.Drop) { }
 

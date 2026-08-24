@@ -6,7 +6,8 @@
 </head>
 
 <body data-theme="dark">
-    <div class="panel">
+
+    <div id="topbar-panel" class="panel">
         <select id="file_menu" onchange="opt(this)">
             <option value="" selected disabled>File</option>
             <option value="new">New Project</option>
@@ -15,7 +16,7 @@
         </select>
     </div>
 
-    <div class="panel">
+    <div id="space-panel" class="panel">
         <canvas id="main" width="800" height="600"></canvas>
         <div id="playbtns">
             <button id="prev" onclick="btn(this)" title="Prev Frame"><img src="svg/prev.svg" /></button>
@@ -24,23 +25,18 @@
         </div>
     </div>
 
-    <div class="panel">
-        <!-- <div id="preview"></div> -->
+    <div id="time-panel" class="panel">
         <div style="padding: 2px;">
             <button id="notool" onclick="btn(this)" title="Split"><img src="svg/add.svg" /></button>
             <button id="split" onclick="btn(this)" title="Split"><img src="svg/split.svg" /></button>
             <button id="delete" onclick="btn(this)" title="Delete"><img src="svg/delete.svg" /></button>
         </div>
 
-        <div style="position: relative;">
+        <div style="position: relative; overflow: hidden;">
             <div id="timeview" class="comp"></div>
+            <div id="time-caret" class="caret"></div>
         </div>
-        <!-- <div id="timeline" class="comp">
-            <canvas></canvas>
-            <div class="caret"></div>
-            <div class="sight"></div>
-        </div> -->
-        <div style="position: relative;">
+        <div style="position: relative; overflow: hidden;">
             <div class="container comp" id="tracks">
                 <div class="track comp container">
                     <div class="item comp">
@@ -48,11 +44,11 @@
                     </div>
                 </div>
             </div>
-            <div class="caret"></div>
+            <div id="track-caret" class="caret"></div>
         </div>
     </div>
 
-    <div class="panel">
+    <div id="asset-panel" class="panel">
         <input id="file" type="file" hidden multiple oninput="file(this)">
         <input id="project_load" type="file" hidden accept=".vide" oninput="file(this)">
         <a id="project_save"></a>
@@ -81,12 +77,11 @@
         </div>
     </div>
 
-    <div class="panel">
+    <div id="inspector-panel" class="panel">
         <div id="inspector">
             <div id="fields" class="container">
                 <div>
                     <label>select</label>
-
                     <input type="number" value="99">
                     <input type="number" value="99.99">
                     <input type="range" value="15" min="0" max="20">
