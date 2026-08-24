@@ -405,7 +405,7 @@ function res_chunk(res: Res, t: float): int {
         case ResType.Video:
             for (let i = 0; i < res.chunks.length; i++) if (xrange_within(xrangeof(res.chunks[i]), t)) return i
             return res.chunks.length - 1
-        case ResType.Scene: return Math.floor(t / SCENE_CHUNK_FRAMES / res.fps)
+        case ResType.Scene: return Math.floor(t * SCENE_CHUNK_FRAMES / res.fps)
         default: return 0
     }
 }
@@ -465,7 +465,7 @@ function res_chunk_cost(res: Res, i: int) {
     }
 }
 
-function scene_create(items: Item[] = [], fps: float = 30, width: int = 600, height: int = 800) {
+function scene_create(items: Item[] = [], fps: float = 30, width: int = 800, height: int = 600) {
     let s = { type: ResType.Scene, file: null, items, anims: [], fps, width, height, duration: 0, layers: 0, frames: [], aspect: 0, canvas: canvas_create(256, 256) } as Scene
     scene_validate(s)
     return s
@@ -490,8 +490,9 @@ function scene_validate(s: Scene, reset = true) {
     s.layers = 0
     for (let i = 0; i < s.items.length; i++) {
         let item = s.items[i]
-        s.duration = Math.max(s.duration, item.to)
-        s.layers = Math.max(s.layers, item.layer)
+        s.duration = max(s.duration, item.to)
+        s.layers = max(s.layers, item.layer)
+        item_move(item, floor(item.from * s.fps) / s.fps) //snap
     }
     s.layers++
     items_sort(s.items)
