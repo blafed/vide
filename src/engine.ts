@@ -872,6 +872,14 @@ function res_draw(res: Res, ctx: Canvas, t: float, dst: Rect = rect_canvas(ctx),
 
 function res_draw_track(res: Res, ctx: Canvas, from: float, to: float, dst: Rect = rect_canvas(ctx), src?: Rect) {
     switch (res.type) {
+        case ResType.Image:
+            if (src == null)
+                src = res_rect(res)
+            rect_fit(src!, dst, FitMethod.Contain)
+            console.log(src, dst)
+            if (res.bitmap)
+                canvas_draw_img2(ctx, res.bitmap, dst, src)
+            break;
         case ResType.Test:
             for (let i = dst[0]; i < dst[2]; i++) {
                 let t = lerp(from, to, i / dst[2])

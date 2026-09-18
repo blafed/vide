@@ -1,4 +1,5 @@
 let entitys = new Map<HTMLElement, any>()
+let ghosts = new Map<HTMLElement, HTMLElement>()
 
 function id<T extends HTMLElement>(id: string) { return document.getElementById(id)! as T }
 function classes(c: string, within: HTMLElement = document.body): Array<HTMLElement> {
@@ -56,9 +57,7 @@ function ent<T>(el: HTMLElement, set?: T): T | null {
         (el as any)._ent = set //useless; only for debug
         entitys.set(el, set)
         return set
-    } else {
-        return entitys.get(el)
-    }
+    } else return entitys.get(el)
 }
 function ent1<T>(el: HTMLElement): T {
     let e = ent<T>(el)
@@ -67,11 +66,63 @@ function ent1<T>(el: HTMLElement): T {
 }
 function dent<T>(e: T): HTMLElement | null {
     for (let x of entitys)
-        if (x[1] == e)
+        if (x[1] == e && x[0].style.display != 'none')
             return x[0]
     return null
 }
+function clone_with_canvas(el: HTMLElement) {
+    let clone = el.cloneNode(true) as HTMLElement
+    let src = [el, ...el.querySelectorAll('canvas')]
+    let dst = [clone, ...clone.querySelectorAll('canvas')]
 
+    for (let i = 0; i < src.length; i++) {
+        let a = src[i]
+        let b = dst[i]
+
+        if (a instanceof HTMLCanvasElement && b instanceof HTMLCanvasElement) {
+            b.width = a.width
+            b.height = a.height
+            b.getContext('2d')!.drawImage(a, 0, 0)
+        }
+    }
+    return clone
+}
+function clone_ghost(el: HTMLElement) {
+    let rect = el.getBoundingClientRect()
+    let clone = clone_with_canvas(el)
+
+    clone.classList.add('ghost')
+    clone.classList.remove('comp')
+    clone.style.left = `${rect.left}px`
+    clone.style.top = `${rect.top}px`
+    clone.style.width = `${rect.width}px`
+    clone.style.height = `${rect.height}px`
+
+    clone.dataset['startx'] = rect.left.toString()
+    clone.dataset['starty'] = rect.top.toString()
+
+    document.body.appendChild(clone)
+    return clone
+}
+function spawn_ghost(el: HTMLElement, dx: float, dy: float) {
+    var ghost = ghosts.get(el)
+    if (!ghost) {
+        ghost = clone_ghost(el)
+        ghosts.set(el, ghost)
+    }
+
+    let sx = parseFloat(ghost.dataset['startx']!)
+    let sy = parseFloat(ghost.dataset['starty']!)
+    ghost.style.left = `${sx + dx}px`
+    ghost.style.top = `${sy + dy}px`
+
+    return ghost
+}
+function remove_ghosts() {
+    for (let ghost of ghosts.values())
+        ghost.remove()
+    ghosts.clear()
+}
 
 //======================
 //#region INPUT
@@ -98,11 +149,23 @@ function file(el: HTMLInputElement) {
     if (el.files) editor.import_many(el.files, editor.path)
     el.value = ''
 }
+function on_keydown(e: KeyboardEvent) {
+    switch (e.key) {
+        case ' ': tool(Tool.Play); break
+        case 'ArrowLeft': tool(Tool.Prev); break
+        case 'ArrowRight': tool(Tool.Next); break
+        case 'Delete': tool(Tool._Delete); break
+    }
+}
+function on_keyup(e: KeyboardEvent) { }
 
-const enum PointerMode { None, Hover, Down, PendDrag, Up, Drag, DragStart, DragEnd, Drop, }
+const enum Pint { None, Hover, Down, PendDrag, Up, Drag, DragStart, DragEnd, Drop, }
 
 let pointers = <Pointer[]>[]
 let hovers = <Pointer[]>[]
+let gloves = new Map<Pointer, Tool>()
+let grips = new Map<Pointer, Grip>()
+
 interface Pointer {
     id: int,
     ox: float, oy: float, //start
@@ -139,14 +202,12 @@ function pointer_hit(ev: Event): HTMLElement | null {
     return el
 }
 
-function on_keydown(e: KeyboardEvent) { }
-function on_keyup(e: KeyboardEvent) { }
 
 function on_dragenter(ev: DragEvent) { prevent(ev) }
 function on_dragleave(ev: DragEvent) {
     prevent(ev)
     let p = event_pointer_drag(ev)
-    if (p.cur) datadrop(p, p.cur, PointerMode.DragEnd)
+    if (p.cur) datadrop(p, p.cur, Pint.DragEnd)
 }
 function on_dragover(ev: DragEvent) {
     prevent(ev)
@@ -154,15 +215,15 @@ function on_dragover(ev: DragEvent) {
     let hit = pointer_hit(ev)
 
     if (hit != p.cur) {
-        if (p.cur) datadrop(p, p.cur, PointerMode.DragEnd)
+        if (p.cur) datadrop(p, p.cur, Pint.DragEnd)
         p.cur = hit
-        if (p.cur) datadrop(p, p.cur, PointerMode.DragStart)
+        if (p.cur) datadrop(p, p.cur, Pint.DragStart)
     }
 }
 function on_dragend(ev: DragEvent) {
     prevent(ev)
     let p = event_pointer_drag(ev)
-    if (p.cur) datadrop(p, p.cur, PointerMode.DragEnd)
+    if (p.cur) datadrop(p, p.cur, Pint.DragEnd)
     let index = pointers.indexOf(p)
     pointers.splice(index, 1)
 }
@@ -171,8 +232,8 @@ function on_dragdrop(ev: DragEvent) {
     let p = event_pointer_drag(ev)
     let hit = pointer_hit(ev)
     if (hit) {
-        datadrop(p, hit, PointerMode.Drop)
-        datadrop(p, hit, PointerMode.DragEnd)
+        datadrop(p, hit, Pint.Drop)
+        datadrop(p, hit, Pint.DragEnd)
         on_dragend(ev)
     }
 }
@@ -187,7 +248,7 @@ function on_down(e: PointerEvent) {
     p.oy = p.y
     if (p.down) {
         pointer_set_exy(p, p.down)
-        pointer(p, p.down, PointerMode.Down)
+        pointer(p, p.down, Pint.Down)
     }
 }
 function on_move(e: PointerEvent) {
@@ -206,7 +267,7 @@ function on_move(e: PointerEvent) {
         pointer_set_xy(p, e)
         if (p.cur) {
             pointer_set_exy(p, p.cur)
-            pointer(p, p.cur, PointerMode.Hover)
+            pointer(p, p.cur, Pint.Hover)
         }
         return
     }
@@ -219,19 +280,19 @@ function on_move(e: PointerEvent) {
     p.cur = pointer_hit(e)
     pointer_set_xy(p, e)
 
-    if (p.cur) pointer(p, p.cur, PointerMode.Hover)
+    if (p.cur) pointer(p, p.cur, Pint.Hover)
 
     if (!p.isDrag) {
         if (hypot(p.dx, p.dy) < 4) {
-            if (p.down) pointer(p, p.down, PointerMode.PendDrag)
+            if (p.down) pointer(p, p.down, Pint.PendDrag)
         }
         else {
             p.isDrag = true
-            if (p.down) pointer(p, p.down, PointerMode.DragStart)
+            if (p.down) pointer(p, p.down, Pint.DragStart)
         }
     }
     else if (p.isDrag) {
-        if (p.down) pointer(p, p.down, PointerMode.Drag)
+        if (p.down) pointer(p, p.down, Pint.Drag)
     }
 }
 
@@ -247,11 +308,11 @@ function on_up(e: PointerEvent) {
 
     if (p.isDrag) {
         if (p.cur) {
-            pointer(p, p.cur, PointerMode.Drop)
+            pointer(p, p.cur, Pint.Drop)
         }
-        if (p.down) pointer(p, p.down, PointerMode.DragEnd)
+        if (p.down) pointer(p, p.down, Pint.DragEnd)
     }
-    if (p.down) pointer(p, p.down, PointerMode.Up)
+    if (p.down) pointer(p, p.down, Pint.Up)
     on_cancel(e)
 }
 function on_cancel(e: PointerEvent) {
@@ -317,33 +378,6 @@ function pointer_set_exy(p: Pointer, el: HTMLElement) {
     p.ey = p.y - bound.top
 }
 
-
-const enum Tool {
-    None,
-    Import,
-    AssetDrag,
-    ItemMove,
-    // ItemSetLeft,
-    // ItemSetRight,
-    ItemRelayer,
-    // ItemRespeed,
-    ItemSplit,
-    ItemDelete,
-
-    Retime,
-
-    TimeviewMove,
-
-    // TrackMerge,
-    // TrackUngap,
-    // TrackUngapLeft,
-    // TrackCut,
-
-    // TimelineViewMove,
-    // TimelineViewLeft,
-    // TimelineViewRight,
-}
-
 function init_input() {
     document.body.onkeydown = on_keydown
     document.body.onkeyup = on_keyup
@@ -359,7 +393,6 @@ function init_input() {
     document.body.onselect = e => prevent(e)
 }
 
-
 const enum LogType { Log, Warn, Error }
 const enum SelectMode { Once, Additive, Toggle, }
 interface Asset {
@@ -368,13 +401,50 @@ interface Asset {
     thumb?: ImageBitmap
 }
 
-interface EditorItem extends Item {
-    selFrom: float
+//tool is any action to get interaction, not actual tool
+const enum Tool {
+    None,
+    Import,
+    AssetDrag,
+    AssetDrop,
+    ItemMove,
+    ItemClipLeft,
+    ItemClipRight,
+    // ItemSetLeft,
+    // ItemSetRight,
+    ItemRelayer,
+    // ItemRespeed,
+    ItemSplit,
+    ItemDelete,
+
+    Retime,
+
+    TimeviewMove,
+
+    SelItem,
+    SelAsset,
+    SelAssetpan,
+    SelTrack,
+
+    Play,
+    Next,
+    Prev,
+
+    _Delete,
+
+    // TrackMerge,
+    // TrackUngap,
+    // TrackUngapLeft,
+    // TrackCut,
+
+    // TimelineViewMove,
+    // TimelineViewLeft,
+    // TimelineViewRight,
 }
 
 let editor: Editor
 class Editor {
-    renderCtx: Canvas = canvas(id('main'))!
+    canvas: Canvas = canvas(id('main'))!
     thumbCtx: Canvas = canvas_create(64, 64)
     jobs = new Jobs()
     path = ''
@@ -392,6 +462,7 @@ class Editor {
     duration = 2; layers = 3; //questionable
     isplaying = false
     tracks: Item[][] = []
+    dragclones = new Map<HTMLElement, HTMLElement>()
 
     //memo are assigned by input, to calc between 2 input calls
     memox: float | null = null
@@ -412,7 +483,7 @@ class Editor {
     constructor() {
         this.request()
         this.framegive((dt) => this.loopplay(dt))
-        canvas_resize_dpr(this.renderCtx)
+        canvas_resize_dpr(this.canvas)
     }
 
     log(msg: string, type: LogType) { console.log(type ? msg.toUpperCase() : msg); return null }
@@ -473,6 +544,7 @@ class Editor {
         this.tracks.length = this.layers
         for (let i = 0; i < this.layers; i++) this.tracks[i] = this.scene.items.filter(x => x.layer == i)
         this.dirty_scene()
+        this.dirty_timeview()
     }
 
     add_item(res: Res, layer: int, at: float, dst = res_rect(res)): Item {
@@ -486,6 +558,21 @@ class Editor {
         item_move(item, newFrom)
         scene_validate(this.scene)
         this.changed_scene()
+    }
+    displace_item_memo(item: Item, delta: float) {
+        if (this.memot == null)
+            this.memot = item.from
+        this.move_item(item, this.memot + delta)
+    }
+    shift_item_left(item: Item, delta: float) {
+        if (this.memot == null)
+            this.memot = item.from;
+        this.clip_item_left(item, this.memot + delta)
+    }
+    shift_item_right(item: Item, delta: float) {
+        if (this.memot == null)
+            this.memot = item.from;
+        this.clip_item_right(item, this.memot + delta)
     }
     relayer_item(item: Item, layer: int) {
         item.layer = layer
@@ -538,7 +625,8 @@ class Editor {
     }
     sel_item(item: Item, v: boolean) {
         v ? this.selItem.add(item) : this.selItem.delete(item); this.dirty_item(item);
-        (item as EditorItem).selFrom = item.from;
+        if (v) dent(item)?.classList.add('high')
+        if (v) dent(item)?.classList.remove('high')
     }
     sel_item2(item: Item, mode: SelectMode) {
         switch (mode) {
@@ -570,8 +658,8 @@ class Editor {
         canvas_clear_all(ctx)
         res_draw(this.scene, ctx, t, dst, src)
         if (border) {
-            this.renderCtx.strokeStyle = '#aaa', this.renderCtx.lineWidth = 1
-            canvas_stroke_rect(this.renderCtx, dst)
+            this.canvas.strokeStyle = '#aaa', this.canvas.lineWidth = 1
+            canvas_stroke_rect(this.canvas, dst)
         }
         return dst
     }
@@ -582,6 +670,7 @@ class Editor {
             this.time = floor(this.time * this.scene.fps) / this.scene.fps
         this.dirty_time()
     }
+    retime_snap() { this.retime(this.time, true) }
     loopplay(dt: float) {
         if (this.isplaying) {
             this.time += dt
@@ -592,13 +681,19 @@ class Editor {
         return true
     }
     play(b: boolean) { this.isplaying = b, this.request() }
+    retime_memo(delta: float, snap = true) {
+        if (this.memot == null) this.memot = this.time
+        this.retime(this.memot + delta, snap)
+    }
 
     // time(from: float, to: float) { }
     // timeplay(from: float, to: float) { }
     // untimeplay() { }
     // playcur() { }
-    playnext() { this.retime(this.time + 1 / this.scene.fps, true) }
-    playprev() { this.retime(this.time - 1 / this.scene.fps, true) }
+    frame2time(f: int) { return f / this.scene.fps }
+    time2frame(t: float) { return floor(t * this.scene.fps) }
+    playnext() { this.retime(this.frame2time(this.time2frame(this.time) + 1), true) }
+    playprev() { this.retime(this.frame2time(this.time2frame(this.time) - 1), true) }
     // playing(b: boolean) { }
 
     time_preplace() { } //initialize a displacement state
@@ -612,6 +707,7 @@ class Editor {
     dirty_track(x: int) { this.dirty.track.add(x); this.request() }
     dirty_assets() { this.dirty.assets = true; this.request() }
     dirty_time() { this.dirty.time = true; this.request() }
+    dirty_timeview() { this.dirty.timeview = true; this.request() }
 
     get_current_assets() { return this.assets.filter(x => x.path.startsWith(this.path)) }
     get_asset_name(a: Asset) { return a.path.includes('/') ? a.path.split('/')[1] : a.path }
@@ -627,7 +723,7 @@ class Editor {
                 this.requested = false
                 if (this.dirty.render) {
                     this.dirty.render = false
-                    this.render(this.time, this.renderCtx, true)
+                    this.render(this.time, this.canvas, true)
                 }
                 editor_update()
             })
@@ -635,12 +731,17 @@ class Editor {
         }
     }
 
-    time_s2vg(t: float) { return this.time_v2g(this.time_s2v(t)) }
-    time_s2v(t: float) { return lerp(this.from, this.to, t - this.from) }
-    time_s2g(t: float) { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.duration, t)) }
-    time_v2g(t: float) { return lerp(0, this.timeviewGuiWidth, unlerp(this.from, this.to, t)) }
-    time_g2s(x: float) { return lerp(0, this.duration, unlerp(0, this.timeviewGuiWidth, x)) }
-    time_g2v(x: float) { return lerp(this.from, this.to, unlerp(0, this.timeviewGuiWidth, x)) }
+    time_s2v(t: float) { return lerp(this.from, this.to, t - this.from) } //scene to view
+    time_s2g(t: float) { return lerp(0, this.timeviewGuiWidth, unlerp(0, this.duration, t)) } //scene to gui
+    time_s2vg(t: float) { return this.time_v2g(this.time_s2v(t)) } //scene to view to gui
+    time_v2g(t: float) { return lerp(0, this.timeviewGuiWidth, unlerp(this.from, this.to, t)) } //view to gui
+    time_g2s(x: float) { return lerp(0, this.duration, unlerp(0, this.timeviewGuiWidth, x)) } //gui to scene
+    time_g2v(x: float) { return lerp(this.from, this.to, unlerp(0, this.timeviewGuiWidth, x)) } //gui to view
+    dt_g2v(dx: float) { return dx / this.timeviewGuiWidth * (this.to - this.from) }
+    dt_g2s(dx: float) { return dx / this.timeviewGuiWidth * this.duration }
+    dt_s2g(dt: float) { return dt / this.duration * this.timeviewGuiWidth }
+    dt_v2g(dt: float) { return dt / (this.to - this.from) * this.timeviewGuiWidth }
+    // dt_g2s(dx: float) { return dx / this.timeviewGuiWidth * this.duration }
 
     gui2time(x: float): float { return lerp(this.from, this.to, unlerp(0, this.timeviewGuiWidth, x)) }
     time2gui(t: float): float { return lerp(0, this.timeviewGuiWidth, unlerp(this.from, this.to, t)) }
@@ -654,6 +755,8 @@ class Editor {
     timeview_move(delta?: float) {
         if (delta != null) {
             if (this.memot == null || this.memox == null) { this.memot = this.from; this.memox = this.to - this.from }
+            let error = -min(this.memot + delta, 0)
+            delta += error
             this.timeview(this.memot + delta, this.memot + this.memox + delta)
         } else this.memot = null;
     }
@@ -663,10 +766,27 @@ class Editor {
     timeview_full() { this.timeview(0, this.duration) }
     timeview_scene() { this.timeview(0, this.scene.duration) }
 
+    reset_memo() { this.memot = this.memox = this.memoy = null; }
 
     has_path(str: string) { return this.assets.findIndex(x => x.path == str) != -1 }
     has_file(f: File) { return this.files.findIndex(x => Editor.file_fingerprint(f) == Editor.file_fingerprint(x)) != -1 }
     static file_fingerprint(f: File) { return `${f.name}|${f.size}|${f.lastModified}` }
+
+    // displace_ghost(el: HTMLElement, dx: float, dy: float) {
+    //     var target = this.dragclones.get(el)
+    //     if (!target) {
+    //         target = clone_ghost(el)
+    //         this.dragclones.set(el, target)
+    //     }
+    //     spawn_ghost(target, dx, dy)
+    // }
+
+    // remove_ghosts() {
+    //     for (let target of this.dragclones.values()) {
+    //         target.remove()
+    //     }
+    //     this.dragclones.clear()
+    // }
 }
 
 const GUI = {
@@ -693,12 +813,12 @@ function editor_update() {
 
     if (e.dirty.asset) {
         let arr = [...e.dirty.asset]
-        update_over(id('assets'), arr, gui_update_asset)
+        update_over(id('assetpan'), arr, gui_update_asset)
         e.dirty.asset.clear()
     }
 
     if (e.dirty.assets)
-        update_over(id('assets'), editor.get_current_assets(), gui_update_asset)
+        update_over(id('assetpan'), editor.get_current_assets(), gui_update_asset)
 
     if (e.dirty.scene)
         update_over(id('tracks'), editor.get_tracks_int(), gui_update_track)
@@ -741,19 +861,141 @@ function gui_update_track(l: int, el: HTMLElement) {
 
 function gui_update_item(item: Item, el: HTMLElement) {
     let c = canvas(el)!
-    el.style.width = editor.time_s2vg(item.to - item.from) + 'px'
-    el.style.left = editor.time_s2vg(item.from) + 'px'
-    console.log('shit happen', el.style.left, el.style.width)
+    el.style.left = editor.time_v2g(item.from) + 'px'
+    el.style.width = editor.dt_v2g(item.to - item.from) + 'px'
+    canvas_resize_dpr(c)
 
     res_draw_track(item.res, c, item.sfrom, item.sto)
     ent(el, item)
 }
 
+type Grip = ReturnType<typeof grip>
 
+function grip(p: Pointer, el: HTMLElement) {
+    let asset = el.classList.contains('asset') ? ent1<Asset>(el) : null
+    let track = el.classList.contains('track') ? ent1<int>(el) : null
+    let item = el.classList.contains('item') ? ent1<Item>(el) : null
 
-function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
+    let assetpan = el.id == 'assetpan' ? true : null
+    let trackpan = el.id == 'trackpan' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
+    let timepan = el.id == 'timepan' ? true : null
+    let timeview = el.id == 'timeview' ? true : null
 
-    const on = (mode: PointerMode, id?: string, klass?: string) => {
+    let trackId = trackpan != null ? trackpan : track != null ? track : item ? item.layer : null
+
+    return { asset, track, item, assetpan, trackpan, timepan, timeview, trackId }
+}
+
+function glove(p: Pointer, el: HTMLElement, pint: Pint): Tool {
+    if (pint == Pint.Up)
+        return Tool.None
+
+    var current = gloves.get(p) ?? Tool.None
+
+    let { asset, track, item, assetpan, trackpan, timepan, timeview, trackId } = grips.get(p)!
+
+    switch (current) {
+        case Tool.None:
+            if (pint == Pint.Down) {
+                if (assetpan != null) return Tool.SelAssetpan
+                if (asset != null) return Tool.SelAsset
+                if (item != null) {
+                    let width = editor.dt_v2g(item_len(item))
+                    console.log(width)
+                    //TODO move to sel item
+                    // if (p.ex < 8) return Tool.ItemClipLeft;
+                    // if (p.ex > width - 8) return Tool.ItemClipRight;
+                    return Tool.SelItem;
+                }
+                if (track != null || trackpan != null || timepan != null) return Tool.Retime
+                if (timeview != null) return Tool.TimeviewMove
+            }
+            break
+        case Tool.SelAsset:
+            if (asset != null && pint == Pint.DragStart) return Tool.AssetDrag
+
+            break
+        case Tool.SelItem:
+            if (pint == Pint.DragStart) {
+                if (abs(p.dy) > abs(p.dx) * 2) return Tool.ItemRelayer
+                else return Tool.ItemMove
+            }
+            break
+        case Tool.AssetDrag:
+            if (pint == Pint.Drop && trackId != null) return Tool.AssetDrop
+            break
+        case Tool.Retime:
+            break
+    }
+
+    return current
+}
+
+function tool(t: Tool, pointer?: Pointer, grip?: Grip) {
+    let dx = pointer ? pointer.dx : 0
+    let dy = pointer ? pointer.dy : 0
+
+    switch (t) {
+        case Tool.Play: editor.play(!editor.isplaying); break
+        case Tool.Next: editor.playnext(); break
+        case Tool.Prev: editor.playprev(); break
+        case Tool.AssetDrop: for (let x of editor.selAsset) editor.add_item(x.res, grip?.trackId ?? 0, editor.gui2time(pointer?.cx ?? 0)); break
+        case Tool.SelAsset: editor.unsel_assets(), editor.sel_asset(grip!.asset!, true)!; break
+        case Tool.SelAssetpan: editor.unsel_assets(); break
+        case Tool.SelItem: editor.unsel_items(); editor.sel_item(grip!.item!, true); break;
+        case Tool.ItemMove: if (pointer) for (let x of editor.selItem) editor.displace_item_memo(x, editor.dt_g2v(pointer.dx)); break
+        case Tool.TimeviewMove: if (pointer) editor.timeview_move(editor.dt_g2s(pointer.dx)); break
+        case Tool.Retime: if (pointer) editor.retime(editor.time_g2v(pointer.cx), false); break
+        case Tool.ItemRelayer: if (pointer) for (let x of editor.selItem) editor.relayer_item(x, grip?.trackId ?? 0); break
+        case Tool.ItemClipLeft: for (let x of editor.selItem) editor.shift_item_left(x, editor.dt_g2v(dx)); break
+        case Tool.ItemClipRight: for (let x of editor.selItem) editor.shift_item_right(x, editor.dt_g2v(dx)); break
+    }
+}
+
+function pointer(p: Pointer, el: HTMLElement, pint: Pint) {
+    let same = p.down == el;
+
+    let gr = grip(p, el)
+    grips.set(p, gr)
+    let glo = glove(p, el, pint)
+    gloves.set(p, glo)
+
+    if (pint == Pint.Down || pint == Pint.Drop) {
+        console.log(grip(p, el))
+        tool(glo, p, gr)
+    }
+
+    switch (glo) {
+        case Tool.ItemMove:
+        case Tool.TimeviewMove:
+        case Tool.Retime:
+            if (pint == Pint.Drag)
+                tool(glo, p, gr)
+            break
+
+        case Tool.ItemRelayer:
+            if (!same && gr.trackId != null)
+                for (let x of editor.selItem)
+                    spawn_ghost(dent(x)!, 0, GUI.TRACK_HEIGHT * (gr.trackId! - x.layer))
+            break
+
+        case Tool.AssetDrag:
+            for (let x of editor.selAsset)
+                spawn_ghost(dent(x)!, p.dx, p.dy)
+            break
+    }
+
+    if (pint == Pint.Up) {
+        remove_ghosts()
+        editor.reset_memo()
+        grips.delete(p)
+        gloves.delete(p)
+    }
+}
+
+function pointer1(p: Pointer, el: HTMLElement, mode: Pint) {
+
+    const on = (mode: Pint, id?: string, klass?: string) => {
         return mode == mode && (id ? el.id == id : klass ? el.classList.contains(klass) : true)
     }
 
@@ -761,7 +1003,7 @@ function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
     let track = el.classList.contains('track') ? ent1<int>(el) : null
     let item = el.classList.contains('item') ? ent1<Item>(el) : null
     let itemTime = item ? editor.gui2time(p.ex) : 0
-    let assets = el.id == 'assets' ? true : null
+    let assets = el.id == 'assetpan' ? true : null
     let tracks = el.id == 'tracks' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
     let trackId = tracks != null ? tracks : track != null ? track : null
     let timeview = el.id == 'timeview' ? true : null
@@ -771,64 +1013,64 @@ function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
 
     switch (editor.tool) {
         case Tool.None: {
-            if (assets != null && mode == PointerMode.Down)
+            if (assets != null && mode == Pint.Down)
                 editor.unsel_assets()
             else if (asset != null) {
-                if (mode == PointerMode.Down) {
+                if (mode == Pint.Down) {
                     editor.unsel_assets()
                     editor.sel_asset(asset, true)
-                } else if (mode == PointerMode.DragStart)
+                } else if (mode == Pint.DragStart)
                     editor.set_tool(Tool.AssetDrag)
             }
             else if (item != null) {
                 //TODO there is double selection for items underneath
-                if (mode == PointerMode.Down) {
+                if (mode == Pint.Down) {
                     editor.unsel_items()
                     editor.sel_item(item, true)
                 }
-                else if (mode == PointerMode.Up)
+                else if (mode == Pint.Up)
                     editor.sel_item(item, false)
-                else if (mode == PointerMode.DragStart) {
+                else if (mode == Pint.DragStart) {
                     if (abs(p.dy) > abs(p.dx) * 3) editor.set_tool(Tool.ItemRelayer)
                     else editor.set_tool(Tool.ItemMove)
                 }
             }
-            else if (track != null && mode == PointerMode.DragStart)
+            else if (track != null && mode == Pint.DragStart)
                 editor.set_tool(Tool.Retime)
-            else if (timeview != null && mode == PointerMode.DragStart)
+            else if (timeview != null && mode == Pint.DragStart)
                 editor.set_tool(Tool.TimeviewMove)
 
         }
             break;
         case Tool.AssetDrag:
-            if ((track != null || tracks != null) && mode == PointerMode.Drop) {
+            if ((track != null || tracks != null) && mode == Pint.Drop) {
                 editor.reset_tool()
                 for (let x of editor.selAsset) editor.add_item(x.res, track ?? tracks!, editor.gui2time(p.cx))
             }
             break;
         case Tool.ItemMove:
-            if (mode == PointerMode.DragEnd)
+            if (mode == Pint.DragEnd)
                 editor.reset_tool()
             if (editor.selItem.size > 1)
                 console.log('some shit', editor.selItem);
-            for (let x of editor.selItem)
-                editor.move_item(x, (x as EditorItem).selFrom + editor.gui2time(p.dx))
+            // for (let x of editor.selItem)
+            // editor.move_item(x, (x as EditorItem).selFrom + editor.gui2time(p.dx))
             break;
         case Tool.ItemDelete:
-            if (mode == PointerMode.Down) {
+            if (mode == Pint.Down) {
                 if (item != null) {
                     editor.remove_item(item)
                 }
             }
             break
         case Tool.ItemSplit:
-            if (mode == PointerMode.Down) {
+            if (mode == Pint.Down) {
                 if (item != null)
                     editor.split_item(item, itemTime)
             }
             break
         case Tool.ItemRelayer:
-            if (mode == PointerMode.DragEnd)
+            if (mode == Pint.DragEnd)
                 editor.reset_tool()
             if (trackId != null && editor.selItem.size > 0) {
                 for (let x of editor.selItem)
@@ -836,19 +1078,19 @@ function pointer(p: Pointer, el: HTMLElement, mode: PointerMode) {
             }
             break
         case Tool.Retime:
-            if (mode == PointerMode.Drag)
+            if (mode == Pint.Drag)
                 editor.retime(editor.gui2time(p.cx))
-            else if (mode == PointerMode.DragEnd)
+            else if (mode == Pint.DragEnd)
                 editor.reset_tool()
             break
         case Tool.TimeviewMove:
-            if (mode == PointerMode.Drag) {
+            if (mode == Pint.Drag) {
                 editor.timeview_move(p.dx / editor.timeviewGuiWidth * editor.duration)
             }
             break
     }
 }
-function datadrop(p: Pointer, el: HTMLElement, mode: PointerMode.DragStart | PointerMode.DragEnd | PointerMode.Drop) { }
+function datadrop(p: Pointer, el: HTMLElement, mode: Pint.DragStart | Pint.DragEnd | Pint.Drop) { }
 
 
 function name2tool(name: string): Tool {
