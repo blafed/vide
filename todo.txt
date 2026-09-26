@@ -1,3 +1,39 @@
+# EDITOR
+
+tools:
+x    create_item
+x    delete_item
+x    move_item
+    shift_item_right/left
+    shift_item_right/left_pushing
+    split_item
+    merge_items
+    ripple_at
+    ripple_at_left
+x    relayer_item
+x    move_relayer_item
+    cut_item (split into 3 items)
+    duplicate_item (duplicates into another layer)
+    respeed_item
+
+project:
+    save
+    load
+
+export:
+    mp4
+
+# ENGINE:
+x res_draw_track(res, ctx, from, to, fps, dst, fit)
+x res_draw_thumb(res, ctx)
+x any draw requires to be loaded first
+x res_load(res, chunk, fps)
+serialize engine stuff
+deserialize engine stuff
+
+
+== == == == == == == == ==
+
 * {
     menu
     preview
@@ -10,41 +46,3 @@
 * timeline = items[]
 * layer = track = item[] computed from timeline
 * anim[] is animation, bolted on
-
-res_load(res, chunk, fps)
-
-
-item operations
-
-
-tools
-    create_item
-    delete_item
-    move_item
-    shift_item_right/left
-    shift_item_right/left_pushing
-    split_item
-    merge_items
-    ripple_at
-    ripple_at_left
-    relayer_item
-    move_relayer_item
-    cut_item (split into 3 items)
-    duplicate_item (duplicates into another layer)
-    respeed_item
-    
-REWORK:
-    kill the legacy
-    do stuff
-    fuck the other stuff!
-
-
-
-
-
-
-x res_draw_track(res, ctx, from, to, fps, dst, fit)
-x res_draw_thumb(res, ctx)
-
-
-x any draw requires to be loaded first
