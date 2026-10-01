@@ -959,6 +959,21 @@ function res_draw_track(res: Res, ctx: Canvas, fps: float, tpp: float, from: flo
                 ctx.fillRect(dst[0] + i, dst[1], 1, dst[3])
             }
             break;
+        case ResType.Video:
+            canvas_clear(ctx, dst)
+            let dt = 1 / fps
+            let width = dt / tpp
+            let t = 0
+            let r = rect(dst[0], dst[1], width, dst[3])
+            // let s = src ? rect_clone(src) : res_rect(res)
+
+            for (let x = dst[1]; x < dst[2]; x += width) {
+                r[0] = x
+                // s[0] += width * (s[2] / dst[3]);if (s[0] > s[2]) s[0] = 0
+                res_draw(res, ctx, t, r, src)
+                t += dt
+            }
+            break
         default: res_draw(res, ctx, 0, undefined, src); //TODO implement for others
     }
 }

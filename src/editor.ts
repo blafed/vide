@@ -865,7 +865,8 @@ function gui_update_item(item: Item, el: HTMLElement) {
     el.style.width = editor.dt_v2g(item.to - item.from) + 'px'
     canvas_resize_dpr(c)
 
-    res_draw_track(item.res, c, item.sfrom, item.sto)
+    let tpp = (editor.to - editor.from) / editor.timeviewGuiWidth
+    res_draw_track(item.res, c, editor.scene.fps, tpp, item.sfrom, item.sto)
     ent(el, item)
 }
 
