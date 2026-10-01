@@ -257,6 +257,7 @@ function canvas(e: Element) {
 const enum ResType { Unknown, Scene, Video, Image, Script, Test }
 type Res = VideoRes | ImageRes | Scene | ScriptRes | TestRes
 interface Resource { readonly type: ResType, readonly file: File | null }
+interface ResourceWrite { type: ResType, file: File | null }
 interface TestRes {
     readonly type: ResType.Test
     readonly file: null
@@ -291,6 +292,8 @@ interface ScriptRes extends Resource {
     func: ScriptFn
 }
 
+//TODO rename
+interface SceneOptions { fps: float, width: int, height: int }
 
 interface Scene extends Resource {
     readonly type: ResType.Scene
@@ -317,18 +320,20 @@ interface Item {
     sfrom: float, sto: float //normalized
     rect: Rect //absolute
     srect: Rect //normalized
+    opacity: float
 
+    //TODO remove these obsolete
     fillStyle: Color
     strokeStyle: Color
     lineWidth: int
-    opacity: float
 }
 
 const enum Prop {
     None,
     DstX, DstY, DstW, DstH,
     SrcX, SrcY, SrcW, SrcH,
-    Opacity, Volume, LineWidth,
+    Opacity, Volume,
+    LineWidth,
     FillR, FillG, FillB, FillA,
     StrokeR, StrokeG, StrokeB, StrokeA
 }
@@ -485,8 +490,8 @@ function scene_create_wrap(res: Res, fps?: float, width?: int, height?: int) {
     }
     return scene_create([item_create(res)], fps, width, height)
 }
-function scene_validate(s: Scene, reset = true) {
-    s.duration = reset ? 0 : s.duration
+function scene_validate(s: Scene) {
+    s.duration = s.duration
     s.layers = 0
     for (let i = 0; i < s.items.length; i++) {
         let item = s.items[i]
@@ -1177,4 +1182,217 @@ class Jobs {
         let job: Job = { res, chunk, deps: [], resolve, promise, state: JobState.None, refcount: 0, loadite: 0, cost: res_chunk_cost(res, chunk), score: 0 }
         return job
     }
+}
+
+function item_bytes(x: Item, resId: int, w: Writer) {
+    w.i32(resId)
+    w.i16(x.layer)
+    w.f32(x.from); w.f32(x.to); w.f32(x.sfrom); w.f32(x.sto)
+    w.rect(x.rect); w.rect(x.srect);
+    w.f32(x.opacity);
+    // w.color(x.fillStyle); w.color(x.strokeStyle); w.f32(x.lineWidth);
+}
+
+function item_debytes(x: Item, r: Reader, map: Map<int, Res>) {
+    let resId = r.i32(); x.res = map.get(resId)!
+    x.layer = r.i16()
+    x.from = r.f32(); x.to = r.f32(); x.sfrom = r.f32(); x.sto = r.f32()
+    x.rect = r.rect(); x.srect = r.rect()
+    x.opacity = r.f32()
+    // x.fillStyle = r.color(); x.strokeStyle = r.color(); x.lineWidth = r.f32(); x.opacity = r.f32()
+}
+
+function res_bytes(res: Res, w: Writer, filemap: Map<File, int>, resmap: Map<Res, int>): boolean {
+    w.u8(res.type)
+
+    let file = res.file == null || filemap == undefined ? -1 : filemap.get(res.file) ?? -1
+    w.i32(file)
+
+    switch (res.type) {
+        case ResType.Test:
+            return true
+        case ResType.Image:
+            return true
+        case ResType.Video:
+            return true
+        case ResType.Script:
+            return true
+        case ResType.Scene:
+            if (resmap == undefined) return false
+            w.i32(res.width), w.i32(res.height), w.f32(res.fps)
+            w.i32(res.items.length); for (let x of res.items) item_bytes(x, resmap.get(x.res) ?? -1, w)
+            return true
+    }
+}
+
+function res_debytes(res: Res, r: Reader, filemap: Map<int, File>, resmap: Map<int, Res>): boolean {
+    (res as ResourceWrite).type = r.u8()
+    let file = r.i32(); (res as ResourceWrite).file = filemap?.get(file) ?? null
+
+    switch (res.type) {
+        case ResType.Test:
+            return true
+        case ResType.Image:
+            return true
+        case ResType.Video:
+            return true
+        case ResType.Script:
+            return true
+        case ResType.Scene:
+            if (resmap == undefined) return false
+            res.width = r.i32(); res.height = r.i32(); res.fps = r.f32()
+            res.items = []
+            res.items.length = r.i32(); for (let i = 0; i < res.items.length; i++) {
+                let item: Item = { res: null!, layer: 0, from: 0, to: 0, sfrom: 0, sto: 0, rect: [0, 0, 0, 0], srect: [0, 0, 0, 0], opacity: 0, fillStyle: [0, 0, 0, 0], strokeStyle: [0, 0, 0, 0], lineWidth: 0 }
+                item_debytes(item, r, resmap)
+                res.items[i] = item
+            }
+            return true
+    }
+}
+
+async function file_bytes(file: File, w: Writer) {
+    w.str(file.name)
+    let data = await file.arrayBuffer()
+    w.buffer(data)
+}
+
+function file_debytes(r: Reader) {
+    let name = r.str()
+    let data = r.buffer()
+    return new File([data.buffer as ArrayBuffer], name)
+}
+
+async function project_bytes(res: Res[], files: File[], w: Writer, json = '') {
+    let filemap = new Map<File, int>()
+    let resmap = new Map<Res, int>()
+
+    for (let i = 0; i < files.length; i++) filemap.set(files[i], i)
+    for (let i = 0; i < res.length; i++) resmap.set(res[i], i)
+
+    w.i32(files.length); for (let file of files) await file_bytes(file, w)
+    w.i32(res.length); for (let r of res) res_bytes(r, w, filemap, resmap)
+    w.str(json)
+}
+
+function project_debytes(r: Reader) {
+    let files: File[] = []
+    let filemap = new Map<int, File>()
+    let filesLen = r.i32()
+    files.length = filesLen
+
+    for (let i = 0; i < filesLen; i++) {
+        let f = file_debytes(r)
+        filemap.set(i, f)
+        files[i] = f
+    }
+
+    let res: Res[] = []
+    let resmap = new Map<int, Res>()
+    let resLen = r.i32()
+    res.length = resLen
+
+    for (let i = 0; i < resLen; i++) {
+        let rs = {} as Res
+        resmap.set(i, rs)
+        res[i] = rs
+    }
+
+    for (let i = 0; i < resLen; i++)
+        res_debytes(res[i], r, filemap, resmap)
+
+    let json = r.str()
+
+    return { res, files, json }
+}
+
+class Writer {
+    data: Uint8Array
+    view: DataView
+    encoder: TextEncoder
+    at: int = 0
+
+    constructor(arr: ArrayBufferLike = new ArrayBuffer()) {
+        this.data = new Uint8Array(arr)
+        this.encoder = new TextEncoder()
+        this.view = new DataView(arr)
+    }
+
+    str(s: string) {
+        //null terminated
+        let bytes = this.encoder.encode(s)
+
+        this.i32(bytes.length)
+        this.ensure(bytes.length + 1)
+        this.data.set(bytes, this.at)
+        this.data[this.at + bytes.length] = 0
+
+        this.at += bytes.length + 1
+    }
+
+    buffer(buf: ArrayBuffer) {
+        this.i32(buf.byteLength)
+        this.ensure(buf.byteLength)
+        this.data.set(new Uint8Array(buf), this.at)
+        this.at += buf.byteLength
+    }
+
+    u8(val: number) { this.ensure(1); this.view.setUint8(this.at, val); this.at += 1 }
+    i8(val: number) { this.ensure(1); this.view.setInt8(this.at, val); this.at += 1 }
+    u16(val: number) { this.ensure(2); this.view.setUint16(this.at, val); this.at += 2 }
+    i16(val: number) { this.ensure(2); this.view.setInt16(this.at, val); this.at += 2 }
+    u32(val: number) { this.ensure(4); this.view.setUint32(this.at, val); this.at += 4 }
+    i32(val: number) { this.ensure(4); this.view.setInt32(this.at, val); this.at += 4 }
+    f32(val: number) { this.ensure(4); this.view.setFloat32(this.at, val); this.at += 4 }
+    f64(val: number) { this.ensure(8); this.view.setFloat64(this.at, val); this.at += 8 }
+    rect(r: Rect) { this.f32(r[0]); this.f32(r[1]); this.f32(r[2]); this.f32(r[3]) }
+    color(c: Color) { this.rect(c) }
+
+    ensure(size: int) {
+        if (this.at + size <= this.data.byteLength) return
+
+        let next = new Uint8Array(Math.max(this.data.byteLength * 2, this.at + size))
+        next.set(this.data)
+        this.data = next
+        this.view = new DataView(this.data.buffer)
+    }
+}
+
+class Reader {
+    data: Uint8Array
+    view: DataView
+    decoder: TextDecoder
+    at: int = 0
+
+    constructor(arr: ArrayBufferLike) {
+        this.data = new Uint8Array(arr)
+        this.decoder = new TextDecoder()
+        this.view = new DataView(arr)
+    }
+
+    str() {
+        let len = this.i32()
+        let bytes = this.data.subarray(this.at, this.at + len)
+        this.at += len + 1
+        return this.decoder.decode(bytes)
+    }
+
+    buffer() {
+        let len = this.i32()
+        let buf = this.data.subarray(this.at, this.at + len)
+        this.at += len
+        return buf
+    }
+
+    u8() { let val = this.view.getUint8(this.at); this.at += 1; return val }
+    i8() { let val = this.view.getInt8(this.at); this.at += 1; return val }
+    u16() { let val = this.view.getUint16(this.at); this.at += 2; return val }
+    i16() { let val = this.view.getInt16(this.at); this.at += 2; return val }
+    u32() { let val = this.view.getUint32(this.at); this.at += 4; return val }
+    i32() { let val = this.view.getInt32(this.at); this.at += 4; return val }
+    f32() { let val = this.view.getFloat32(this.at); this.at += 4; return val }
+    f64() { let val = this.view.getFloat64(this.at); this.at += 8; return val }
+
+    rect(): Rect { return [this.f32(), this.f32(), this.f32(), this.f32()] }
+    color(): Color { return this.rect() }
 }

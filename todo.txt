@@ -17,8 +17,8 @@ x    move_relayer_item
     respeed_item
 
 project:
-    save
-    load
+x    save
+x    load
 
 export:
     mp4
@@ -30,6 +30,12 @@ x any draw requires to be loaded first
 x res_load(res, chunk, fps)
 serialize engine stuff
 deserialize engine stuff
+
+# MAJOR REDESIGN:
+Item[] should replace "Scene";
+    current "Scene" should be one of ways to display Item[]
+    core reduced to: item, res, anim
+    use SceneOptions
 
 
 == == == == == == == == ==
