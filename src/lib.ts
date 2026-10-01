@@ -151,3 +151,17 @@ function mp4_sample_pts(s: Mp4Sample) {
 function mp4_sample_dur(s: Mp4Sample) {
     return s.duration / s.timescale
 }
+
+function mp4_create_file() { return MP4Box.createFile() }
+function mp4_add_track(f: any, codec: string, desc: AllowSharedBufferSource | undefined, duration: float, width: int, height: int): int {
+    let trackOptions = {
+        timescale: 1_000_000, media_duration: duration * 1_000_000,
+        width, height, codec, avcDecoderConfigRecord: desc,
+    }
+    return f.addTrack(trackOptions)
+}
+function mp4_add_video_chunk(f: any, track: int, data: ArrayBuffer, chunk: EncodedVideoChunk) {
+    let sample = { dts: chunk.timestamp, cts: chunk.timestamp, duration: chunk.duration, is_sync: chunk.type == 'key' }
+    f.addSample(track, data, sample)
+    return sample
+}

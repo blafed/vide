@@ -135,3 +135,21 @@ function editor_set_json(json: string) {
     editor.assets = state.assets.map(a => ({ path: a.name, res: editor.res[a.res] }))
     editor.scene = editor.res[state.scene] as Scene
 }
+
+
+async function test_export() {
+    let res = res_create_test()
+    let width = 1920, height = 1024, dur = 1
+    let ctx = canvas_create(width, height)
+    let xideo = xideo_create(width, height, dur)
+    let frames = res_vrames(res, ctx, 8, 0, dur)
+    xideo_add(frames, xideo)
+    let blob = await xideo_finish(xideo)
+    console.log('all ok', blob)
+
+    let video = await res_create(new File([blob], 'test.mp4', { type: 'video/mp4' }), ResType.Video)
+    editor.new_asset(video!, 'exported')
+
+    // console.log(res_len(video), res_len(res))
+    return video
+}

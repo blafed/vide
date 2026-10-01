@@ -875,7 +875,74 @@ function res_draw(res: Res, ctx: Canvas, t: float, dst: Rect = rect_canvas(ctx),
     }
 }
 
-function res_draw_track(res: Res, ctx: Canvas, from: float, to: float, dst: Rect = rect_canvas(ctx), src?: Rect) {
+function vrame(ctx: Canvas, t: float, dur: float): VideoFrame {
+    return new VideoFrame(ctx.canvas, { timestamp: t * 1000_000, duration: dur * 1000_000 })
+}
+
+//inclusive start exlusive end
+//t -> [from, to)
+function res_vrames(res: Res, ctx: Canvas, fps: float, from: float, to: float, dst = rect_canvas(ctx), src?: Rect) {
+    const dt = 1 / fps
+    let frames: VideoFrame[] = []
+
+    let t = from
+    while (t < to) {
+        canvas_clear(ctx, dst)
+        res_draw(res, ctx, t, dst, src)
+        frames.push(vrame(ctx, t, dt))
+        t += dt
+    }
+
+    return frames
+}
+
+//exportvideo
+interface Xideo {
+    width: int, height: int, duration: float
+    encoder: VideoEncoder,
+    track: int,
+    mp4: any, //mp4box.createfile
+}
+
+function xideo_create(width: int, height: int, duration: float): Xideo {
+    const codec = 'avc1.420028'
+
+    let ex: Xideo = { track: -1, mp4: mp4_create_file(), width, height, duration, encoder: null! };
+    ex.encoder = new VideoEncoder({
+        output: (chunk, meta) => {
+            if (ex.track < 0)
+                ex.track = mp4_add_track(ex.mp4, codec, meta!.decoderConfig!.description, duration, width, height)
+
+            let data = new ArrayBuffer(chunk.byteLength)
+            chunk.copyTo(data)
+            mp4_add_video_chunk(ex.mp4, ex.track, data, chunk)
+        },
+        error: (e) => { console.error('encoding error: ', e) }
+    })
+
+    ex.encoder.configure({ codec, width, height })
+
+    return ex
+}
+
+function xideo_add(frames: VideoFrame[], exi: Xideo) {
+    for (let frame of frames) {
+        exi.encoder.encode(frame)
+        frame.close()
+    }
+}
+
+async function xideo_finish(ex: Xideo) {
+    await ex.encoder.flush()
+    ex.encoder.close()
+
+    let stream = ex.mp4.getBuffer()
+    let blob = new Blob([stream.buffer], { type: 'video/mp4' })
+    return blob
+}
+
+//tpp = time per pixel
+function res_draw_track(res: Res, ctx: Canvas, fps: float, tpp: float, from: float, to: float, dst: Rect = rect_canvas(ctx), src?: Rect) {
     switch (res.type) {
         case ResType.Image:
             if (src == null)
