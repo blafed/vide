@@ -515,6 +515,7 @@ class Editor {
         return asset
     }
     new_scene(path: string) { return this.new_asset(scene_create(), path) }
+    new_res_test(path: string) { return this.new_asset(res_create_test(), path) }
     open_scene(a: Asset) {
         if (a.res.type != ResType.Scene)
             return this.loge('not a scene')
