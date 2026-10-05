@@ -57,7 +57,7 @@ function VIDE_icon(c: Canvas = canvas_create(64, 64)) {
 
 function test_rw() {
     //AI vommit
-    let w = new Writer(new ArrayBuffer(64))
+    let w = new Writer()
 
     w.u8(255)
     w.i8(-5)
@@ -70,8 +70,9 @@ function test_rw() {
     w.str("hello")
     w.rect([1, 2, 3, 4])
     w.color([5, 6, 7, 8])
+    w.buffer(new ArrayBuffer(100))
 
-    let r = new Reader(w.data.buffer)
+    let r = new Reader(w.get())
 
     console.assert(r.u8() == 255)
     console.assert(r.i8() == -5)
@@ -84,6 +85,7 @@ function test_rw() {
     console.assert(r.str() == "hello")
     console.assert(JSON.stringify(r.rect()) == JSON.stringify([1, 2, 3, 4]))
     console.assert(JSON.stringify(r.color()) == JSON.stringify([5, 6, 7, 8]))
+    console.assert(r.buffer().byteLength == 100)
     console.log('all ok')
 }
 
@@ -91,14 +93,14 @@ async function test_saveproject() {
     let bufferA, bufferB
 
     let w = new Writer()
-    let res = editor.res, files = editor.files, json = editor_get_json()
+    let res = editor.res, files = editor.files, json = editor.getjsondata()
     console.log('initial', res, files)
 
     let b = await project_bytes(res, files, w, json)
     console.log('serialized', w)
-    bufferA = new Uint8Array(w.data.buffer)
+    bufferA = w.get()
 
-    let reader = new Reader(w.data.buffer)
+    let reader = new Reader(bufferA)
 
     let result = await project_debytes(reader)
     console.log('parsed', result.res, result.files, result.json)
@@ -106,7 +108,7 @@ async function test_saveproject() {
     w = new Writer()
     b = await project_bytes(result.res, result.files, w, result.json)
     console.log('serialized again', w)
-    bufferB = new Uint8Array(w.data.buffer)
+    bufferB = w.get()
 
     console.assert(bufferA.byteLength == bufferB.byteLength)
     let i = 0

@@ -675,6 +675,11 @@ function item_split(item: Item, t: float): [Item, Item] {
     a.layer = b.layer = item.layer
     return [a, b];
 }
+function item_unsplit(a: Item, b: Item): Item {
+    let item = item_create(a.res, a.from, b.to, a.rect, a.sfrom, b.sto, a.srect)
+    item.layer = a.layer
+    return item
+}
 function item_clip_left(item: Item, newSfrom: float) {
     newSfrom = clamp01(newSfrom / res_len(item.res))
     let speed = item_speed(item)
@@ -1294,6 +1299,7 @@ function res_bytes(res: Res, w: Writer, filemap: Map<File, int>, resmap: Map<Res
         case ResType.Test:
             return true
         case ResType.Image:
+            w.i32(res.width), w.i32(res.height)
             return true
         case ResType.Video:
             return true
@@ -1315,6 +1321,7 @@ function res_debytes(res: Res, r: Reader, filemap: Map<int, File>, resmap: Map<i
         case ResType.Test:
             return true
         case ResType.Image:
+            res.width = r.i32(); res.height = r.i32()
             return true
         case ResType.Video:
             return true
@@ -1335,14 +1342,16 @@ function res_debytes(res: Res, r: Reader, filemap: Map<int, File>, resmap: Map<i
 
 async function file_bytes(file: File, w: Writer) {
     w.str(file.name)
+    w.f64(file.lastModified)
     let data = await file.arrayBuffer()
     w.buffer(data)
 }
 
 function file_debytes(r: Reader) {
     let name = r.str()
+    let lastModified = r.f64()
     let data = r.buffer()
-    return new File([data.buffer as ArrayBuffer], name)
+    return new File([data], name, { lastModified })
 }
 
 async function project_bytes(res: Res[], files: File[], w: Writer, json = '') {
@@ -1394,10 +1403,10 @@ class Writer {
     encoder: TextEncoder
     at: int = 0
 
-    constructor(arr: ArrayBufferLike = new ArrayBuffer()) {
-        this.data = new Uint8Array(arr)
+    constructor(data: Uint8Array = new Uint8Array(new ArrayBuffer())) {
+        this.data = data
         this.encoder = new TextEncoder()
-        this.view = new DataView(arr)
+        this.view = new DataView(data.buffer, data.byteOffset, data.byteLength)
     }
 
     str(s: string) {
@@ -1438,6 +1447,8 @@ class Writer {
         this.data = next
         this.view = new DataView(this.data.buffer)
     }
+
+    get() { return new Uint8Array(this.data.buffer, this.data.byteOffset, this.at).slice() }
 }
 
 class Reader {
@@ -1446,10 +1457,10 @@ class Reader {
     decoder: TextDecoder
     at: int = 0
 
-    constructor(arr: ArrayBufferLike) {
-        this.data = new Uint8Array(arr)
+    constructor(data: Uint8Array) {
+        this.data = data
         this.decoder = new TextDecoder()
-        this.view = new DataView(arr)
+        this.view = new DataView(data.buffer, data.byteOffset, data.byteLength)
     }
 
     str() {
@@ -1461,7 +1472,7 @@ class Reader {
 
     buffer() {
         let len = this.i32()
-        let buf = this.data.subarray(this.at, this.at + len)
+        let buf = this.data.subarray(this.at, this.at + len).slice()
         this.at += len
         return buf
     }
