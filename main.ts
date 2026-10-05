@@ -2,6 +2,8 @@
 function main() {
     //need exactly this to init
     init_input()
+    init_gui()
+
     editor = new Editor()
     let scene = editor.new_scene('main')!
     editor.open_scene(scene)

@@ -1,5 +1,6 @@
 let entitys = new Map<HTMLElement, any>()
 let ghosts = new Map<HTMLElement, HTMLElement>()
+let boxes: Map<HTMLElement, Box> = new Map()
 
 function id<T extends HTMLElement>(id: string) { return document.getElementById(id)! as T }
 function classes(c: string, within: HTMLElement = document.body): Array<HTMLElement> {
@@ -118,8 +119,60 @@ function spawn_ghost(el: HTMLElement, dx: float, dy: float) {
 
     return ghost
 }
+function remove_ghost(el: HTMLElement) {
+    let ghost = ghosts.get(el)
+    if (ghost) {
+        ghost.remove()
+        ghosts.delete(el)
+    }
+}
 function remove_ghosts() {
     for (let ghost of ghosts.values())
         ghost.remove()
     ghosts.clear()
+}
+
+
+
+function drag_move(d: Drag, el: HTMLElement, useghost = false) {
+    if (d.pint == Pint.Up) {
+        el.style.pointerEvents = ''
+        remove_ghost(el)
+        return
+    }
+    if (d.pint != Pint.Drag) return
+    if (useghost) {
+        let ghost = spawn_ghost(el, d.dx, d.dy)
+        ghost.style.left = `${d.startx + d.dx}px`
+        ghost.style.top = `${d.starty + d.dy}px`
+    } else {
+        el.style.left = `${d.startx + d.dx}px`
+        el.style.top = `${d.starty + d.dy}px`
+        el.style.pointerEvents = 'none'
+    }
+}
+
+class Box {
+    bar: HTMLElement
+    body: HTMLElement
+
+    constructor(public el: HTMLElement) {
+        this.bar = class1('boxbar', el)
+        this.body = class1('boxbot', el)
+        reg_drag(this.bar, 0, (d) => drag_move(d, el))
+    }
+
+    getpos(): Point { return [this.el.offsetLeft, this.el.offsetTop] }
+    setpos(p: Point) { this.el.style.left = `${p[0]}px`; this.el.style.top = `${p[1]}px` }
+}
+
+
+function init_gui() {
+    let forbox = document.querySelectorAll('[for-box]')
+    classes('box').forEach(e => {
+        let box = new Box(e)
+        for (let i = 0; i < forbox.length; i++) if (forbox[i].getAttribute('for-box') == e.id)
+            box.body.appendChild(forbox[i])
+        boxes.set(e, box)
+    })
 }

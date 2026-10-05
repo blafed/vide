@@ -82,6 +82,24 @@ const enum Tool {
     // TimelineViewRight,
 }
 
+interface Project {
+    files: File[]
+    res: Res[]
+    other: {
+        assets: Asset[]
+        scene: int
+        editor: EditorState
+    }
+}
+
+interface EditorState {
+    time: float, from: float, to: float
+    duration: float, fps: float,
+    layers: int, items: Item[][], tracks: Item[][],
+    isplaying: boolean,
+    selAssets: int[], selItems: int[], selTracks: int[],
+}
+
 let editor: Editor
 class Editor {
     canvas: Canvas = canvas(id('main'))!
@@ -750,4 +768,88 @@ function tool2name(tool: Tool): string {
         case Tool.ItemDelete: return 'delete'
         default: return ''
     }
+}
+
+
+
+class StoreVault {
+    private db: IDBDatabase | null = null
+
+    constructor(public name: string, public store: string, public version = 1) { }
+
+    async getdb() {
+        if (this.db) return this.db
+        this.db = await new Promise<IDBDatabase>((resolve, reject) => {
+            let req = indexedDB.open(this.name, this.version)
+            req.onupgradeneeded = () => req.result.createObjectStore(this.store)
+            req.onsuccess = () => resolve(req.result)
+            req.onerror = () => reject(req.error)
+        })
+        return this.db
+    }
+
+    async save(s: string, blob: Blob) {
+        let db = await this.getdb()
+        await new Promise<void>((resolve, reject) => {
+            let tx = db.transaction(this.store, 'readwrite')
+            tx.objectStore(this.store).put(blob, s)
+            tx.oncomplete = () => resolve()
+            tx.onerror = () => reject(tx.error)
+        })
+    }
+
+    async load(s: string) {
+        let db = await this.getdb()
+        return await new Promise<Blob | undefined>((resolve, reject) => {
+            let req = db.transaction(this.store).objectStore(this.store).get(s)
+            req.onsuccess = () => resolve(req.result)
+            req.onerror = () => reject(req.error)
+        })
+    }
+
+    async list(s: string) {
+        let db = await this.getdb()
+        return await new Promise<{ name: string, size: number }[]>((resolve, reject) => {
+            let req = db.transaction(this.store).objectStore(this.store).openCursor()
+            let out: { name: string, size: number }[] = []
+
+            req.onsuccess = () => {
+                let c = req.result
+                if (!c) return resolve(out)
+                let name = c.key as string
+                if (name.startsWith(s)) out.push({ name, size: (c.value as Blob).size })
+                c.continue()
+            }
+
+            req.onerror = () => reject(req.error)
+        })
+    }
+}
+
+class ProjectVault {
+    static TEMP_PATH = "_temp"
+
+    constructor(public store: StoreVault) { }
+
+    async save_temp(project: Project) { await this.save(ProjectVault.TEMP_PATH, project) }
+    async load_temp() { return this.load(ProjectVault.TEMP_PATH) }
+    async save(name: string, project: Project) {
+        let writer = new Writer()
+        await project_bytes(project.res, project.files, writer, JSON.stringify(project.other))
+
+        let blob = new Blob([writer.get()], { type: 'application/octet-stream' })
+        await this.store.save(name, blob)
+    }
+    async load(name: string) {
+        let blob = await this.store.load(name)
+
+        if (blob == undefined)
+            return null
+
+        let reader = new Reader(new Uint8Array(await blob.arrayBuffer()))
+        let data = await project_debytes(reader)
+        let project: Project = { files: data.files, res: data.res, other: JSON.parse(data.json) as Project['other'] }
+        return project
+    }
+    list() { return this.store.list('') }
 }
