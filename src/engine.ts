@@ -996,7 +996,6 @@ function res_draw_thumb(res: Res, ctx: Canvas, dst: Rect = rect_canvas(ctx)) {
     }
 }
 
-
 async function res_load(res: Res, chunk: int) {
     switch (res.type) {
         case ResType.Video: await video_load_chunk(res, chunk); break
@@ -1086,8 +1085,6 @@ interface Job {
     cost: float //fixed
     score: float //current cost. usage ++ and decay over time, not constrainted
 }
-
-
 
 
 
@@ -1354,7 +1351,10 @@ function file_debytes(r: Reader) {
     return new File([data], name, { lastModified })
 }
 
+const PROJECT_VERSION = 1;
+
 async function project_bytes(res: Res[], files: File[], w: Writer, json = '') {
+    w.i32(PROJECT_VERSION)
     let filemap = new Map<File, int>()
     let resmap = new Map<Res, int>()
 
@@ -1366,7 +1366,19 @@ async function project_bytes(res: Res[], files: File[], w: Writer, json = '') {
     w.str(json)
 }
 
+function project_migrate(from: int, to: int, r: Reader) {
+    if (from == undefined) r.move(-4)
+    else if (from != to) return false //TODO add migrations
+    return true;
+}
+
 function project_debytes(r: Reader) {
+    let version = r.i32()
+
+    if (PROJECT_VERSION != version)
+        if (!project_migrate(version, PROJECT_VERSION, r))
+            throw new Error(`unsupported project version; version:{version}; expected:{PROJECT_VERSION}`)
+
     let files: File[] = []
     let filemap = new Map<int, File>()
     let filesLen = r.i32()
@@ -1488,4 +1500,6 @@ class Reader {
 
     rect(): Rect { return [this.f32(), this.f32(), this.f32(), this.f32()] }
     color(): Color { return this.rect() }
+
+    move(off: int) { this.at += off }
 }
