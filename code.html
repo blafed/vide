@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+
+<head>
+    <style>
+        html,body,#editor {width: 100%;height: 100%;margin: 0;}
+        .cm-editor {height: 100%;}
+    </style>
+</head>
+
+<body>
+    <div id="editor"></div>
+
+    <script type="module">
+        //TODO need a way to get rid of this BS and use standalone embedded js
+
+        import { EditorView, basicSetup } from "https://esm.sh/codemirror"
+        import { javascript } from "https://esm.sh/@codemirror/lang-javascript"
+        import { autocompletion, completeFromList } from "https://esm.sh/@codemirror/autocomplete"
+        import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark"
+        import { keymap } from "https://esm.sh/@codemirror/view"
+
+        const editor = new EditorView({
+            parent: document.getElementById("editor"),
+            extensions: [
+                basicSetup,
+                javascript(),
+                oneDark,
+                autocompletion(),
+                keymap.of([
+                    {
+                        key: "Tab",
+                        run: ({ state, dispatch }) => {
+                            dispatch(state.update(state.replaceSelection("  ")))
+                            return true
+                        }
+                    }
+                ])
+            ]
+        })
+
+        window.onmessage = e => {
+            if (e.origin !== location.origin) return
+            if (e.data.type === "set") {
+                editor.dispatch({changes: {from: 0, to: editor.state.doc.length, insert: e.data.text}})
+            }
+        }
+
+        editor.dom.addEventListener("input", () => {
+            parent.postMessage({type: "change", text: editor.state.doc.toString()}, location.origin)
+        })
+
+    </script>
+</body>
+
+</html>

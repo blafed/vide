@@ -339,23 +339,26 @@ function reg_drag(el: HTMLElement, threshold = 4, cb: (d: Drag) => void) {
     return obj
 }
 
-function reg_data(el: HTMLElement, cb: (mode: Pint, d: DataTransfer | null) => void) {
+function reg_data(el: HTMLElement, cb: (mode: Pint, dataTransfer: DataTransfer | null, ev: DragEvent) => void) {
     let enter = false
     const event = function (ev: DragEvent) {
         prevent(ev)
+
         let d = ev.dataTransfer
-        if (ev.type == 'dragend' && enter) cb(Pint.DragEnd, d)
-        if (d == null || !(ev.target instanceof Node) || el != ev.target && !el.contains(ev.target)) return
+        if (ev.type == 'dragend' && enter) cb(Pint.DragEnd, d, ev)
+        // if (d == null || !(ev.target instanceof Node) || el != ev.target && !el.contains(ev.target)) return
+        if (d == null) return
+
         enter = true
-        if (ev.type == 'dragover') cb(Pint.Drag, d)
-        else if (ev.type == 'drop') cb(Pint.Drop, d)
+        if (ev.type == 'dragover') cb(Pint.Drag, d, ev)
+        else if (ev.type == 'drop') cb(Pint.Drop, d, ev)
     }
 
-    document.addEventListener('dragenter', event)
-    document.addEventListener('dragleave', event)
-    document.addEventListener('dragover', event)
-    document.addEventListener('drop', event)
-    document.addEventListener('dragend', event)
+    el.addEventListener('dragenter', event)
+    el.addEventListener('dragleave', event)
+    el.addEventListener('dragover', event)
+    el.addEventListener('drop', event)
+    el.addEventListener('dragend', event)
 }
 
 function reg_drop(el: HTMLElement, cb: (d: Drag) => void) {
@@ -365,7 +368,7 @@ function reg_drop(el: HTMLElement, cb: (d: Drag) => void) {
     })
 }
 
-function reg_pointer(el: HTMLElement, cb: (down: boolean) => {}) {
+function reg_pointer(el: HTMLElement, cb: (down: boolean) => void) {
     let downed = false
     el.addEventListener('pointerdown', () => {
         cb(true);

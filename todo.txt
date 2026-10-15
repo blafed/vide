@@ -1,5 +1,75 @@
 # EDITOR
 
+plan:
+    import video
+    import audio
+    import image
+
+    edit item time
+        move
+        relayer
+        crop
+        rescale
+        split
+        merge
+    
+    edit item space
+        move
+        crop
+        transform {scale, rotate, flip}
+        opacity
+
+    edit item wave
+        volume
+        mute
+        fades
+        pitch
+
+    animate
+        space src
+        space dst
+        space transform
+        space combinatory(src, dst) ; crop
+        opacity
+
+        wave volume
+        wave freq
+
+    preview
+        play/pause
+        next/perv
+        playtime
+        timeview
+
+
+
+    export video
+
+    save project
+    load project
+
+
+hotkeys:
+    menu (esc)
+    undo (z)
+    redo (y) (shift z)
+    delete (x)
+    copy (c)
+    paste (v)
+    move (wasd)
+    navigate up (q)
+    navigate down (e)
+    tools [1,2,3,4,5,6,7,8,9]
+    fuck (f) "do the most obvious action per current context"
+    potential (tab)
+    potential (`)
+    play/pause (space)
+    previous frame (b)
+    next frame (n)
+
+
+
+
 tools:
 x    create_item
 x    delete_item

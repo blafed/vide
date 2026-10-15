@@ -100,9 +100,21 @@ interface EditorState {
     selAssets: int[], selItems: int[], selTracks: int[],
 }
 
+interface Gui {
+    main: HTMLElement
+    canvas: Canvas
+    tracks: HTMLElement
+    timeview: HTMLElement
+    trackCaret: HTMLElement
+    timeCaret: HTMLElement
+    assetpan: HTMLElement
+    buttons: Map<string, HTMLElement>
+}
+
+
+
 let editor: Editor
 class Editor {
-    canvas: Canvas = canvas(id('main'))!
     thumbCtx: Canvas = canvas_create(64, 64)
     jobs = new Jobs()
     path = ''
@@ -136,9 +148,13 @@ class Editor {
 
     framegives = { set: new Set(), next: 1 }
 
-    timeviewGuiWidth = id('tracks').clientWidth
+    get timeviewGuiWidth() { return this.gui.tracks.clientWidth }
+    get canvas() { return this.gui.canvas }
+
+    gui: Gui
 
     constructor() {
+        this.gui = gui_init(this)
         this.request()
         this.framegive((dt) => this.loopplay(dt))
         canvas_resize_dpr(this.canvas)
@@ -367,6 +383,11 @@ class Editor {
     dirty_assets() { this.dirty.assets = true; this.request() }
     dirty_time() { this.dirty.time = true; this.request() }
     dirty_timeview() { this.dirty.timeview = true; this.request() }
+    undirty() {
+        let d = this.dirty
+        d.scene = d.timeview = d.time = d.assets = false
+        d.asset.clear(); d.res.clear(); d.item.clear(); d.track.clear()
+    }
 
     get_current_assets() { return this.assets.filter(x => x.path.startsWith(this.path)) }
     get_asset_name(a: Asset) { return a.path.includes('/') ? a.path.split('/')[1] : a.path }
@@ -384,7 +405,8 @@ class Editor {
                     this.dirty.render = false
                     this.render(this.time, this.canvas, true)
                 }
-                editor_update()
+                gui_update(this.gui, this)
+                this.undirty()
             })
             this.requested = true
         }
@@ -446,87 +468,6 @@ class Editor {
     //     }
     //     this.dragclones.clear()
     // }
-}
-
-const GUI = {
-    TRACK_HEIGHT: 68
-}
-
-function editor_update() {
-    var e = editor
-
-    if (e.dirty.timeview) {
-        e.dirty.timeview = false
-        var el = id('timeview')
-        el.style.left = e.scene2gui(e.from) + 'px'
-        el.style.width = e.scene2gui(e.to - e.from) + 'px'
-    }
-
-    if (e.dirty.time) {
-        e.dirty.time = false;
-        var el = id('track-caret')
-        el.style.left = e.time2gui(e.time) + 'px'
-        el = id('time-caret')
-        el.style.left = e.scene2gui(e.time) + 'px'
-    }
-
-    if (e.dirty.asset) {
-        let arr = [...e.dirty.asset]
-        update_over(id('assetpan'), arr, gui_update_asset)
-        e.dirty.asset.clear()
-    }
-
-    if (e.dirty.assets)
-        update_over(id('assetpan'), editor.get_current_assets(), gui_update_asset)
-
-    if (e.dirty.scene)
-        update_over(id('tracks'), editor.get_tracks_int(), gui_update_track)
-
-    buttons()
-}
-
-
-function buttons() {
-    let buttons = document.getElementsByTagName('button')
-
-    for (let button of buttons) {
-        set_highlight(button, editor.toolLock && editor.tool == name2tool(button.id))
-    }
-    set_highlight(id('notool'), !editor.toolLock)
-
-    set_highlight(id('play'), editor.isplaying)
-}
-
-function gui_update_asset(a: Asset, el: HTMLElement) {
-    let c = canvas(el)!
-    canvas_resize_dpr(c)
-    canvas_clear_all(c)
-    if (a.thumb) {
-        let src = rect_img(a.thumb), dst = rect_canvas(c)
-        rect_fit(src, dst, FitMethod.Contain)
-        canvas_draw_img2(c, a.thumb, dst, src)
-    }
-    let text = class1('name', el)
-    text.innerText = editor.get_asset_name(a)
-    class_toggle(el, 'high', editor.is_sel_asset(a))
-    ent(el, a)
-}
-
-function gui_update_track(l: int, el: HTMLElement) {
-    let items = editor.get_track(l)
-    update_over(el, items, gui_update_item)
-    ent(el, l)
-}
-
-function gui_update_item(item: Item, el: HTMLElement) {
-    let c = canvas(el)!
-    el.style.left = editor.time_v2g(item.from) + 'px'
-    el.style.width = editor.dt_v2g(item.to - item.from) + 'px'
-    canvas_resize_dpr(c)
-
-    let tpp = (editor.to - editor.from) / editor.timeviewGuiWidth
-    res_draw_track(item.res, c, editor.scene.fps, tpp, item.sfrom, item.sto)
-    ent(el, item)
 }
 
 type Grip = ReturnType<typeof grip>
@@ -853,3 +794,93 @@ class ProjectVault {
     }
     list() { return this.store.list('') }
 }
+
+
+class Pixelmaker {
+    ctx: Canvas
+    tool: 'pen' = 'pen'
+    color = 'red'
+    points: Point[] = []
+
+    constructor(public el: HTMLCanvasElement) {
+        this.ctx = canvas(el)!
+        this.ctx.imageSmoothingEnabled = false
+
+        reg_drag(el, 0, (d) => d.pint == Pint.Up ? null : this.push_point(d.ex, d.ey))
+        reg_pointer(el, (down) => this.pointer(down))
+        reg_data(el, (mode, d, ev) => mode != Pint.Drop ? null : this.import_transfer(d!, ev.offsetX, ev.offsetY))
+    }
+
+    size(w: number, h: number) {
+        const dpr = devicePixelRatio
+
+        this.el.width = Math.round(w * dpr)
+        this.el.height = Math.round(h * dpr)
+
+        this.ctx.scale(dpr, dpr)
+    }
+
+    set(x: number, y: number, color: string) {
+        this.ctx.fillStyle = color
+        this.ctx.fillRect(x, y, 1, 1)
+    }
+
+    import_transfer(d: DataTransfer, x = 0, y = 0) {
+        let files = d.files
+        if (files.length == 0) return
+
+        for (let i = 0; i < files.length; i++) {
+            let type = res_type(files[i].type)
+            if (type != ResType.Image) return;
+            let reader = new FileReader()
+            reader.onload = () => this.import_dataurl(reader.result as string, x, y)
+            reader.readAsDataURL(files[i])
+        }
+    }
+
+    import_dataurl(dataurl: string, x = 0, y = 0) {
+        let image = new Image()
+        image.src = dataurl
+        image.onload = () => {
+            let ctx = this.ctx
+            ctx.drawImage(image, x, y)
+        }
+    }
+
+    reset_points() { this.points.length = 0 }
+    pointer(down: boolean) {
+        switch (this.tool) {
+            default: if (!down) this.reset_points()
+        }
+    }
+    push_point(x: float, y: float) {
+        let ctx = this.ctx, points = this.points
+
+        if (points.length == 0 || points[points.length - 1][0] != x || points[points.length - 1][1] != y) {
+            points.push([x, y])
+        }
+
+        let past = null
+        if (points.length > 2)
+            past = points[points.length - 2]
+
+
+        switch (this.tool) {
+            case 'pen':
+                ctx.strokeStyle = this.color
+                ctx.fillStyle = this.color
+                if (!past) {
+                    ctx.fillRect(x, y, 1, 1)
+                    ctx.beginPath()
+                    ctx.moveTo(x, y)
+                }
+                else {
+                    ctx.lineTo(x, y)
+                    ctx.stroke()
+                }
+                break
+        }
+    }
+}
+
+let pix = new Pixelmaker(id('pixelmaker'))

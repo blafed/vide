@@ -7,13 +7,26 @@
 
 <body data-theme="dark">
 
-    <div id="topbar-panel" class="panel">
+    <!-- <div id="topbar-panel" class="panel">
         <select id="file_menu" onchange="opt(this)">
             <option value="" selected disabled>File</option>
             <option value="new">New Project</option>
             <option value="save">Save Project</option>
             <option value="load">Load Project</option>
         </select>
+    </div> -->
+
+    <div id="menu" style="position: fixed;top:0;left:0;bottom:0;right:0;background-color:rgba(0, 0, 0, 0.4);display:none;z-index: 99;justify-content: center;align-items: center;">
+        <div style="display: flex; flex-direction: column; width: 240px; gap: 8px;background-color: var(--bg);" class="panel">
+        <button>Import</button>
+        <button>Export</button>
+        <hr/>
+        <button>New</button>
+        <button>Save</button>
+        <button>Load</button>
+        <hr/>
+        <button>Settings</button>
+        </div>
     </div>
 
     <div id="space-panel" class="panel">
@@ -93,6 +106,16 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="textpan" class="panel">
+        <iframe src="/code.html" style="width: 100%; height: 100%;"></iframe>
+    </div>
+
+    <div id="pixpan" class="panel">
+        here edit your pixel shit
+        <canvas id="pixelmaker" width="256" height="256"/>
+        <div id="pixpals"><div class="pixpal"></div></div>
     </div>
 
     <div id="pane" class="container">
