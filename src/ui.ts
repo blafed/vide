@@ -1,6 +1,8 @@
 let entitys = new Map<HTMLElement, any>()
 let ghosts = new Map<HTMLElement, HTMLElement>()
 let boxes: Map<HTMLElement, Box> = new Map()
+let drags = new Map<int, Drag>()
+
 
 function id<T extends HTMLElement>(id: string) { return document.getElementById(id)! as T }
 function classes(c: string, within: HTMLElement = document.body): Array<HTMLElement> {
@@ -176,3 +178,197 @@ function init_gui() {
         boxes.set(e, box)
     })
 }
+
+const enum Pint { Down, PendDrag, Up, Drag, Drop, }
+interface Drag {
+    pint: Pint,
+    x: float, y: float,
+    dx: float, dy: float
+    ox: float, oy: float,
+    ex: float, ey: float, //delta relative to the element
+    startx: float, starty: float //starting element position
+    excced: boolean,
+    started: HTMLElement
+    target: HTMLElement
+}
+
+function recalc_drag(obj: Drag, el: HTMLElement, e: PointerEvent, move: boolean, thr: float) {
+    if (!move) {
+        obj.started = e.target as HTMLElement
+
+        let bounding = obj.started.getBoundingClientRect()
+        obj.startx = bounding.left, obj.starty = bounding.top
+
+        obj.target = obj.started
+        obj.pint = Pint.Down
+        obj.ox = obj.x = e.clientX
+        obj.oy = obj.y = e.clientY
+        obj.ex = e.clientX - obj.startx, obj.ey = e.clientY - obj.starty
+        obj.dx = 0, obj.dy = 0
+        obj.excced = false
+    } else {
+        obj.x = e.x, obj.y = e.y
+        obj.dx = e.x - obj.ox, obj.dy = e.y - obj.oy
+        obj.ex = e.clientX - obj.startx, obj.ey = e.clientY - obj.starty
+        obj.target = e.target as HTMLElement
+
+        if (sqmag(obj.dx, obj.dy) > thr)
+            obj.excced = true
+
+        obj.pint = obj.excced ? Pint.Drag : Pint.PendDrag
+    }
+}
+
+function reg_drag(el: HTMLElement, threshold = 4, cb: (d: Drag) => void) {
+    let obj: Drag = { pint: Pint.Down, x: 0, y: 0, dx: 0, dy: 0, ox: 0, oy: 0, ex: 0, ey: 0, startx: 0, starty: 0, excced: false, started: null!, target: null! }
+    let pointerId = 0
+    let downed = false
+    let upped = false
+
+    const down = (e: PointerEvent) => {
+        pointerId = e.pointerId
+
+        recalc_drag(obj, el, e, false, threshold)
+
+        downed = true
+        upped = false
+        drags.set(e.pointerId, obj)
+
+        window.addEventListener('pointermove', move)
+        window.addEventListener('pointerup', up)
+        window.addEventListener('pointercancel', up)
+
+        cb(obj)
+    }
+
+    const move = (e: PointerEvent) => {
+        if (!downed) return
+        recalc_drag(obj, el, e, true, threshold)
+
+        if (obj.target != obj.started)
+            obj.target.dispatchEvent(new CustomEvent('dragdrop', { detail: obj, bubbles: true }))
+
+        cb(obj)
+    }
+
+    const up = (e: PointerEvent) => {
+        if (!downed) return
+        if (upped) return
+
+        recalc_drag(obj, el, e, true, threshold)
+
+        downed = false
+        upped = true
+        obj.pint = Pint.Up
+
+        if (obj.target != obj.started)
+            obj.target.dispatchEvent(new CustomEvent('dragdrop', { detail: obj, bubbles: true }))
+
+        cb(obj)
+        drags.delete(pointerId)
+
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
+    }
+
+    el.addEventListener('pointerdown', down)
+    return obj
+}
+
+function reg_datadrag(el: HTMLElement, cb: (mode: Pint, dataTransfer: DataTransfer | null, ev: DragEvent) => void) {
+    let enter = false
+    const event = function (ev: DragEvent) {
+        prevent(ev)
+
+        let d = ev.dataTransfer
+        if (ev.type == 'dragend' && enter) cb(Pint.Up, d, ev)
+        // if (d == null || !(ev.target instanceof Node) || el != ev.target && !el.contains(ev.target)) return
+        if (d == null) return
+
+        enter = true
+        if (ev.type == 'dragover') cb(Pint.Drag, d, ev)
+        else if (ev.type == 'drop') cb(Pint.Drop, d, ev)
+    }
+
+    el.addEventListener('dragenter', event)
+    el.addEventListener('dragleave', event)
+    el.addEventListener('dragover', event)
+    el.addEventListener('drop', event)
+    el.addEventListener('dragend', event)
+}
+
+function reg_drop(el: HTMLElement, cb: (d: Drag) => void) {
+    el.addEventListener('dragdrop', e => {
+        let d = (e as CustomEvent<Drag>).detail
+        cb(d)
+    })
+}
+
+function reg_pointer(el: HTMLElement, cb: (down: boolean) => void) {
+    let downed = false
+    el.addEventListener('pointerdown', () => {
+        cb(true);
+        downed = true
+    })
+    el.addEventListener('pointerup', () => {
+        if (downed)
+            cb(false);
+        downed = false
+    })
+}
+
+function reg_longtap(el: HTMLElement, cb: (ev: PointerEvent) => void) {
+    let longtap: int | null = null;
+
+    el.addEventListener('pointerdown', e => { longtap && clearTimeout(longtap); longtap = setTimeout(() => cb(e), 500); });
+    el.addEventListener('pointerup', () => { longtap && clearTimeout(longtap); longtap = null; });
+    el.addEventListener('pointerleave', () => { longtap && clearTimeout(longtap); longtap = null; });
+};
+
+function reg_context(el: HTMLElement, cb: (ev: PointerEvent) => void) {
+    let longtap: int | null = null;
+
+    el.addEventListener('pointerdown', e => {
+        if (e.pointerType == 'mouse' && e.button == 2) cb(e);
+        else {
+            longtap && clearTimeout(longtap);
+            longtap = setTimeout(() => cb(e), 500);
+        }
+    });
+    el.addEventListener('pointerup', () => { longtap && clearTimeout(longtap); longtap = null; });
+    el.addEventListener('pointerleave', () => { longtap && clearTimeout(longtap); longtap = null; });
+}
+
+function reg_doubletap(el: HTMLElement, cb: (ev: PointerEvent) => void) {
+    let lastTime = 0;
+    let lastTarget: EventTarget | null = null;
+
+
+    el.addEventListener('pointerdown', e => {
+        const now = Date.now();
+
+        if (e.target === lastTarget && now - lastTime < 500) {
+            cb(e); lastTime = 0; lastTarget = null;
+        } else {
+            lastTime = now; lastTarget = e.target;
+        }
+    });
+}
+
+let reg_focusity = function (cb: (focus: boolean) => void) {
+    //dedup
+    let focus = true
+    let set = (x: boolean) => { if (x != focus) cb(focus = x) }
+
+    window.addEventListener("beforeunload", () => set(false))
+    document.addEventListener("visibilitychange", () => set(document.visibilityState === 'visible'));
+    window.onblur = window.onpagehide = () => set(false);
+    window.onfocus = window.onpageshow = () => set(true);
+};
+
+
+let reg_wheel = function (el: HTMLElement, cb: (ev: WheelEvent) => void) {
+    el.addEventListener(window.PointerEvent ? 'pointerenter' : 'mouseenter', () => window.addEventListener('wheel', cb));
+    el.addEventListener(window.PointerEvent ? 'pointerleave' : 'mouseleave', () => window.removeEventListener('wheel', cb));
+};
