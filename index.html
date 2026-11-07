@@ -38,7 +38,7 @@
         </div>
     </div>
 
-    <div id="time-panel" class="panel">
+    <div id="timepan" class="panel">
         <div style="padding: 2px;">
             <button id="notool" onclick="btn(this)" title="Split"><img src="" /></button>
             <button id="split" onclick="btn(this)" title="Split"><img src="svg/split.svg" /></button>
@@ -61,7 +61,7 @@
         </div>
     </div>
 
-    <div id="asset-panel" class="panel">
+    <div id="assetpan" class="panel">
         <input id="file" type="file" hidden multiple oninput="file(this)">
         <input id="project_load" type="file" hidden accept=".vide" oninput="file(this)">
         <a id="project_save"></a>
@@ -82,7 +82,7 @@
                 <input type="checkbox" onchange="on_assets_order_desc(this)">
             </div>
         </header>
-        <div id="assetpan" class="container comp">
+        <div id="assets" class="container comp">
             <div class="asset comp">
                 <canvas class="thumb"></canvas>
                 <div class="name">hi there</div>
@@ -116,6 +116,13 @@
         here edit your pixel shit
         <canvas id="pixelmaker" width="256" height="256"/>
         <div id="pixpals"><div class="pixpal"></div></div>
+    </div>
+
+
+    <div id="colorpan" class="panel">
+		<canvas width="210" height="210" style="width:210px;height:210px"></canvas>
+		<input type="range" class="bri" min="0" max="1" step="0.01" value="0.5" style="width:100%;" />
+		<input type="text" class="hidden" style="position:absolute;padding:2px;width:80px;border:8px solid;z-index:1;"/>
     </div>
 
     <div id="pane" class="container">

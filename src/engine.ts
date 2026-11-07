@@ -18,6 +18,8 @@ function hypot2(x: float, y: float) { return sqrt(x * x + y * y) }
 function sqmag(x: float, y: float) { return x * x + y * y }
 function wrap01(t: float) { return t == 1 ? 1 : t - floor(t) }
 function within(a: float, b: float, t: float) { return a <= t && t <= b }
+function deg2rad(n: number) { return n * Math.PI / 180 }
+function rad2deg(n: number) { return n * 180 / Math.PI }
 
 function range_contains(a: Rangef, b: Rangef) { return a[0] <= b[0] && b[1] <= a[1] }
 function xrange_contains(a: Rangef, b: Rangef) { return a[0] <= b[0] && b[1] < a[1] }
@@ -340,12 +342,12 @@ const enum Prop {
 interface Anim { target: Item, keys: AnimKey[] }
 interface AnimKey { t: float, prop: Prop, value: float, ease?: Ease }
 
-function res_create_script(f: Function | string): ScriptRes | null {
-    if (f instanceof Function) return { type: ResType.Script, file: null, func: f as ScriptFn, canvas: canvas_create(256, 256) }
+function res_create_script(f: ScriptFn | string): ScriptRes | null {
+    if (f instanceof Function) return { type: ResType.Script, file: null, func: f, canvas: canvas_create(256, 256) }
     else {
         f = eval(f)
         if (!(f instanceof Function)) return null
-        else return { type: ResType.Script, file: null, func: f as ScriptFn, canvas: canvas_create(256, 256) }
+        else return { type: ResType.Script, file: null, func: f, canvas: canvas_create(256, 256) }
     }
 }
 function res_create_test(): TestRes { return { canvas: canvas_create(256, 256), file: null, fps: 1, height: 1, type: ResType.Test, width: 1 } }

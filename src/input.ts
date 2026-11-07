@@ -259,10 +259,11 @@ const drags = new Map<int, Drag>()
 
 function recalc_drag(obj: Drag, el: HTMLElement, e: PointerEvent, move: boolean, thr: float) {
     if (!move) {
-        let bounding = el.getBoundingClientRect()
+        obj.target = e.target as HTMLElement
+
+        let bounding = obj.target.getBoundingClientRect()
         obj.startx = bounding.left, obj.starty = bounding.top
 
-        obj.target = e.target as HTMLElement
         obj.current = obj.target
         obj.pint = Pint.Down
         obj.ox = obj.x = e.clientX
@@ -428,4 +429,10 @@ let reg_focusity = function (cb: (focus: boolean) => void) {
     document.addEventListener("visibilitychange", () => set(document.visibilityState === 'visible'));
     window.onblur = window.onpagehide = () => set(false);
     window.onfocus = window.onpageshow = () => set(true);
+};
+
+
+let reg_wheel = function (el: HTMLElement, cb: (ev: WheelEvent) => void) {
+    el.addEventListener(window.PointerEvent ? 'pointerenter' : 'mouseenter', () => window.addEventListener('wheel', cb));
+    el.addEventListener(window.PointerEvent ? 'pointerleave' : 'mouseleave', () => window.removeEventListener('wheel', cb));
 };

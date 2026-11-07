@@ -43,6 +43,8 @@ button{font-family: Consolas, monospace;}
 /* .panel header {font-weight: bold; text-align: center; margin-bottom: 8px;} */
 header {display: flex; justify-content: space-between; width: 100%;}
 
+.hidden{display: none;}
+
 .act, button, .asset, select, input{border-radius: 8px; color: var(--fg);border: 1px solid var(--border); margin: 0;}
 .act:hover, button:hover:not(:disabled), .asset:hover, select:hover, input:hover{outline: 1px solid var(--border);}
 input{background-color: var(--bgc); padding: 4px 4px; height: 24px;}
@@ -58,8 +60,8 @@ button img {width: 16px; height: 16px;}
 img {width: 24px; height: 24px;}
 button:disabled{cursor: default; opacity: 0.4; border-color: transparent;}
 
-#assetpan {height: 128px; display: flex; flex-wrap: wrap; gap: 4px; box-sizing: border-box;}
-#assetpan.high{outline: 2px dashed var(--accent);}
+#assets {height: 128px; display: flex; flex-wrap: wrap; gap: 4px; box-sizing: border-box;}
+#assets.high{outline: 2px dashed var(--accent);}
 .asset { width: 64px; height: 64px; text-align: center; padding: 2px; background-color: var(--bgc); border-radius: 8px;}
 .asset .thumb {width: 48px; height: 48px;}
 .asset .name {overflow: hidden;text-overflow: ellipsis;white-space: nowrap; font-size: 10px; padding: 1px 0px; cursor: default;}
@@ -119,3 +121,12 @@ button:disabled{cursor: default; opacity: 0.4; border-color: transparent;}
 
 iframe{padding: 0;margin: 0;background-color: #000;border: none;}
 hr{width: 100%;}
+
+
+
+
+
+.bri::-moz-range-thumb { appearance: none; width: 15px; height: 15px; border: 2px solid #000; border-radius: 50%; box-shadow: 0 0 0 2px #fff; cursor: pointer; background: none; background-color: transparent; }
+.bri::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;width: 18px;height: 18px;border: 2px solid #000;border-radius: 50%;box-shadow: 0 0 0 2px #fff;cursor: pointer;}
+.bri{border-radius: 10px; height: 15px; border: 1px solid #000; width: 100%; float: none;}
+.bri{appearance: none;border-radius: 15px;}

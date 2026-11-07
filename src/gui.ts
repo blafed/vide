@@ -2,7 +2,7 @@
 const GUI = {
     TRACK_HEIGHT: 68
 }
-function gui_init(e: Editor): Gui {
+function gui_init(e: Editor) {
     let dombuttons = document.getElementsByTagName('button')
     let buttons = new Map<string, HTMLElement>()
     for (let i = 0; i < dombuttons.length; i++)
@@ -16,33 +16,62 @@ function gui_init(e: Editor): Gui {
         trackCaret: id('track-caret'),
         timeCaret: id('time-caret'),
         assetpan: id('assetpan'),
+        assets: id('assets'),
+        timepan: id('timepan'),
         buttons
     }
 
     reg_data(gui.assetpan, (mode, tr) => mode != Pint.Drop ? null : e.import_many(tr!.files, e.path))
+    reg_drag(gui.timepan, 0, (d) => {
+        if (d.target == gui.timeCaret || d.target == gui.trackCaret) {
+            if (d.pint == Pint.Drag) {
+                let off = d.target == gui.timeCaret ? e.dt_g2s(d.dx) : e.dt_g2v(d.dx)
+                e.retime_memo(off, false)
+            }
+        } else if (d.target == gui.timeview) {
+            e.timeview_move(d.pint == Pint.Up ? undefined : e.dt_g2s(d.dx))
+        } else if (d.target == gui.tracks || d.target.classList.contains('track')) {
+            if (d.pint != Pint.Drag) return
+            e.retime(e.time_g2v(d.ex), false)
+        }
+    })
+    reg_drop(gui.tracks, (d) => {
+        if (d.target.classList.contains('asset') && d.current.classList.contains('track')) {
+            if (d.pint != Pint.Up) return
+            console.log(d.target, d.current)
+            let c = ent1<int>(d.current)
+            e.add_item(ent1<Asset>(d.target).res, c, e.time_g2v(d.ex))
+        }
+    })
+
+    reg_drag(gui.assets, 8, (d) => {
+        if (d.target.classList.contains('asset'))
+            drag_move(d, d.target, true)
+    })
+
 
     return gui
 }
 
-function gui_update(g: Gui, e: Editor) {
-    if (e.dirty.timeview) {
-        var el = id('timeview')
+function gui_update(g: Gui, e: Editor, force = false) {
+    if (force || e.dirty.timeview) {
+        var el = g.timeview
         el.style.left = e.scene2gui(e.from) + 'px'
         el.style.width = e.scene2gui(e.to - e.from) + 'px'
     }
 
-    if (e.dirty.time) {
-        var el = id('track-caret')
+    if (force || e.dirty.time) {
+        var el = g.trackCaret
         el.style.left = e.time2gui(e.time) + 'px'
-        el = id('time-caret')
+        el = g.timeCaret
         el.style.left = e.scene2gui(e.time) + 'px'
     }
 
-    if (e.dirty.assets || e.dirty.asset.size)
-        update_over_editor(e, id('assetpan'), e.get_current_assets(), gui_update_asset)
+    if (force || e.dirty.assets || e.dirty.asset.size)
+        update_over_editor(e, g.assets, e.get_current_assets(), gui_update_asset)
 
-    if (e.dirty.scene)
-        update_over_editor(e, id('tracks'), e.get_tracks_int(), gui_update_track)
+    if (force || e.dirty.scene)
+        update_over_editor(e, g.tracks, e.get_tracks_int(), gui_update_track)
 
     let bt = g.buttons
 

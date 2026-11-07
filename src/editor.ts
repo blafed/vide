@@ -1,6 +1,3 @@
-let gloves = new Map<Pointer, Tool>()
-let grips = new Map<Pointer, Grip>()
-
 function text(el: HTMLInputElement) {
     let value = el.value
     switch (el.id) {
@@ -100,17 +97,7 @@ interface EditorState {
     selAssets: int[], selItems: int[], selTracks: int[],
 }
 
-interface Gui {
-    main: HTMLElement
-    canvas: Canvas
-    tracks: HTMLElement
-    timeview: HTMLElement
-    trackCaret: HTMLElement
-    timeCaret: HTMLElement
-    assetpan: HTMLElement
-    buttons: Map<string, HTMLElement>
-}
-
+type Gui = ReturnType<typeof gui_init>
 
 
 let editor: Editor
@@ -470,228 +457,228 @@ class Editor {
     // }
 }
 
-type Grip = ReturnType<typeof grip>
+// type Grip = ReturnType<typeof grip>
 
-function grip(p: Pointer, el: HTMLElement) {
-    let asset = el.classList.contains('asset') ? ent1<Asset>(el) : null
-    let track = el.classList.contains('track') ? ent1<int>(el) : null
-    let item = el.classList.contains('item') ? ent1<Item>(el) : null
+// function grip(p: Pointer, el: HTMLElement) {
+//     let asset = el.classList.contains('asset') ? ent1<Asset>(el) : null
+//     let track = el.classList.contains('track') ? ent1<int>(el) : null
+//     let item = el.classList.contains('item') ? ent1<Item>(el) : null
 
-    let assetpan = el.id == 'assetpan' ? true : null
-    let trackpan = el.id == 'trackpan' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
-    let timepan = el.id == 'timepan' ? true : null
-    let timeview = el.id == 'timeview' ? true : null
+//     let assetpan = el.id == 'assetpan' ? true : null
+//     let trackpan = el.id == 'trackpan' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
+//     let timepan = el.id == 'timepan' ? true : null
+//     let timeview = el.id == 'timeview' ? true : null
 
-    let trackId = trackpan != null ? trackpan : track != null ? track : item ? item.layer : null
+//     let trackId = trackpan != null ? trackpan : track != null ? track : item ? item.layer : null
 
-    return { asset, track, item, assetpan, trackpan, timepan, timeview, trackId }
-}
+//     return { asset, track, item, assetpan, trackpan, timepan, timeview, trackId }
+// }
 
-function glove(p: Pointer, el: HTMLElement, pint: Pint): Tool {
-    if (pint == Pint.Up)
-        return Tool.None
+// function glove(p: Pointer, el: HTMLElement, pint: Pint): Tool {
+//     if (pint == Pint.Up)
+//         return Tool.None
 
-    var current = gloves.get(p) ?? Tool.None
+//     var current = gloves.get(p) ?? Tool.None
 
-    let { asset, track, item, assetpan, trackpan, timepan, timeview, trackId } = grips.get(p)!
+//     let { asset, track, item, assetpan, trackpan, timepan, timeview, trackId } = grips.get(p)!
 
-    switch (current) {
-        case Tool.None:
-            if (pint == Pint.Down) {
-                if (assetpan != null) return Tool.SelAssetpan
-                if (asset != null) return Tool.SelAsset
-                if (item != null) {
-                    let width = editor.dt_v2g(item_len(item))
-                    console.log(width)
-                    //TODO move to sel item
-                    // if (p.ex < 8) return Tool.ItemClipLeft;
-                    // if (p.ex > width - 8) return Tool.ItemClipRight;
-                    return Tool.SelItem;
-                }
-                if (track != null || trackpan != null || timepan != null) return Tool.Retime
-                if (timeview != null) return Tool.TimeviewMove
-            }
-            break
-        case Tool.SelAsset:
-            if (asset != null && pint == Pint.DragStart) return Tool.AssetDrag
+//     switch (current) {
+//         case Tool.None:
+//             if (pint == Pint.Down) {
+//                 if (assetpan != null) return Tool.SelAssetpan
+//                 if (asset != null) return Tool.SelAsset
+//                 if (item != null) {
+//                     let width = editor.dt_v2g(item_len(item))
+//                     console.log(width)
+//                     //TODO move to sel item
+//                     // if (p.ex < 8) return Tool.ItemClipLeft;
+//                     // if (p.ex > width - 8) return Tool.ItemClipRight;
+//                     return Tool.SelItem;
+//                 }
+//                 if (track != null || trackpan != null || timepan != null) return Tool.Retime
+//                 if (timeview != null) return Tool.TimeviewMove
+//             }
+//             break
+//         case Tool.SelAsset:
+//             if (asset != null && pint == Pint.DragStart) return Tool.AssetDrag
 
-            break
-        case Tool.SelItem:
-            if (pint == Pint.DragStart) {
-                if (abs(p.dy) > abs(p.dx) * 2) return Tool.ItemRelayer
-                else return Tool.ItemMove
-            }
-            break
-        case Tool.AssetDrag:
-            if (pint == Pint.Drop && trackId != null) return Tool.AssetDrop
-            break
-        case Tool.Retime:
-            break
-    }
+//             break
+//         case Tool.SelItem:
+//             if (pint == Pint.DragStart) {
+//                 if (abs(p.dy) > abs(p.dx) * 2) return Tool.ItemRelayer
+//                 else return Tool.ItemMove
+//             }
+//             break
+//         case Tool.AssetDrag:
+//             if (pint == Pint.Drop && trackId != null) return Tool.AssetDrop
+//             break
+//         case Tool.Retime:
+//             break
+//     }
 
-    return current
-}
+//     return current
+// }
 
-function tool(t: Tool, pointer?: Pointer, grip?: Grip) {
-    let dx = pointer ? pointer.dx : 0
-    let dy = pointer ? pointer.dy : 0
+// function tool(t: Tool, pointer?: Pointer, grip?: Grip) {
+//     let dx = pointer ? pointer.dx : 0
+//     let dy = pointer ? pointer.dy : 0
 
-    switch (t) {
-        case Tool.Play: editor.play(!editor.isplaying); break
-        case Tool.Next: editor.playnext(); break
-        case Tool.Prev: editor.playprev(); break
-        case Tool.AssetDrop: for (let x of editor.selAsset) editor.add_item(x.res, grip?.trackId ?? 0, editor.gui2time(pointer?.cx ?? 0)); break
-        case Tool.SelAsset: editor.unsel_assets(), editor.sel_asset(grip!.asset!, true)!; break
-        case Tool.SelAssetpan: editor.unsel_assets(); break
-        case Tool.SelItem: editor.unsel_items(); editor.sel_item(grip!.item!, true); break;
-        case Tool.ItemMove: if (pointer) for (let x of editor.selItem) editor.displace_item_memo(x, editor.dt_g2v(pointer.dx)); break
-        case Tool.TimeviewMove: if (pointer) editor.timeview_move(editor.dt_g2s(pointer.dx)); break
-        case Tool.Retime: if (pointer) editor.retime(editor.time_g2v(pointer.cx), false); break
-        case Tool.ItemRelayer: if (pointer) for (let x of editor.selItem) editor.relayer_item(x, grip?.trackId ?? 0); break
-        case Tool.ItemClipLeft: for (let x of editor.selItem) editor.shift_item_left(x, editor.dt_g2v(dx)); break
-        case Tool.ItemClipRight: for (let x of editor.selItem) editor.shift_item_right(x, editor.dt_g2v(dx)); break
-    }
-}
+//     switch (t) {
+//         case Tool.Play: editor.play(!editor.isplaying); break
+//         case Tool.Next: editor.playnext(); break
+//         case Tool.Prev: editor.playprev(); break
+//         case Tool.AssetDrop: for (let x of editor.selAsset) editor.add_item(x.res, grip?.trackId ?? 0, editor.gui2time(pointer?.cx ?? 0)); break
+//         case Tool.SelAsset: editor.unsel_assets(), editor.sel_asset(grip!.asset!, true)!; break
+//         case Tool.SelAssetpan: editor.unsel_assets(); break
+//         case Tool.SelItem: editor.unsel_items(); editor.sel_item(grip!.item!, true); break;
+//         case Tool.ItemMove: if (pointer) for (let x of editor.selItem) editor.displace_item_memo(x, editor.dt_g2v(pointer.dx)); break
+//         case Tool.TimeviewMove: if (pointer) editor.timeview_move(editor.dt_g2s(pointer.dx)); break
+//         case Tool.Retime: if (pointer) editor.retime(editor.time_g2v(pointer.cx), false); break
+//         case Tool.ItemRelayer: if (pointer) for (let x of editor.selItem) editor.relayer_item(x, grip?.trackId ?? 0); break
+//         case Tool.ItemClipLeft: for (let x of editor.selItem) editor.shift_item_left(x, editor.dt_g2v(dx)); break
+//         case Tool.ItemClipRight: for (let x of editor.selItem) editor.shift_item_right(x, editor.dt_g2v(dx)); break
+//     }
+// }
 
-function pointer(p: Pointer, el: HTMLElement, pint: Pint) {
-    let same = p.down == el;
+// function pointer(p: Pointer, el: HTMLElement, pint: Pint) {
+//     let same = p.down == el;
 
-    let gr = grip(p, el)
-    grips.set(p, gr)
-    let glo = glove(p, el, pint)
-    gloves.set(p, glo)
+//     let gr = grip(p, el)
+//     grips.set(p, gr)
+//     let glo = glove(p, el, pint)
+//     gloves.set(p, glo)
 
-    if (pint == Pint.Down || pint == Pint.Drop) {
-        console.log(grip(p, el))
-        tool(glo, p, gr)
-    }
+//     if (pint == Pint.Down || pint == Pint.Drop) {
+//         console.log(grip(p, el))
+//         tool(glo, p, gr)
+//     }
 
-    switch (glo) {
-        case Tool.ItemMove:
-        case Tool.TimeviewMove:
-        case Tool.Retime:
-            if (pint == Pint.Drag)
-                tool(glo, p, gr)
-            break
+//     switch (glo) {
+//         case Tool.ItemMove:
+//         case Tool.TimeviewMove:
+//         case Tool.Retime:
+//             if (pint == Pint.Drag)
+//                 tool(glo, p, gr)
+//             break
 
-        case Tool.ItemRelayer:
-            if (!same && gr.trackId != null)
-                for (let x of editor.selItem)
-                    spawn_ghost(dent(x)!, 0, GUI.TRACK_HEIGHT * (gr.trackId! - x.layer))
-            break
+//         case Tool.ItemRelayer:
+//             if (!same && gr.trackId != null)
+//                 for (let x of editor.selItem)
+//                     spawn_ghost(dent(x)!, 0, GUI.TRACK_HEIGHT * (gr.trackId! - x.layer))
+//             break
 
-        case Tool.AssetDrag:
-            for (let x of editor.selAsset)
-                spawn_ghost(dent(x)!, p.dx, p.dy)
-            break
-    }
+//         case Tool.AssetDrag:
+//             for (let x of editor.selAsset)
+//                 spawn_ghost(dent(x)!, p.dx, p.dy)
+//             break
+//     }
 
-    if (pint == Pint.Up) {
-        remove_ghosts()
-        editor.reset_memo()
-        grips.delete(p)
-        gloves.delete(p)
-    }
-}
+//     if (pint == Pint.Up) {
+//         remove_ghosts()
+//         editor.reset_memo()
+//         grips.delete(p)
+//         gloves.delete(p)
+//     }
+// }
 
-function pointer1(p: Pointer, el: HTMLElement, mode: Pint) {
+// function pointer1(p: Pointer, el: HTMLElement, mode: Pint) {
 
-    const on = (mode: Pint, id?: string, klass?: string) => {
-        return mode == mode && (id ? el.id == id : klass ? el.classList.contains(klass) : true)
-    }
+//     const on = (mode: Pint, id?: string, klass?: string) => {
+//         return mode == mode && (id ? el.id == id : klass ? el.classList.contains(klass) : true)
+//     }
 
-    let asset = el.classList.contains('asset') ? ent1<Asset>(el) : null
-    let track = el.classList.contains('track') ? ent1<int>(el) : null
-    let item = el.classList.contains('item') ? ent1<Item>(el) : null
-    let itemTime = item ? editor.gui2time(p.ex) : 0
-    let assets = el.id == 'assetpan' ? true : null
-    let tracks = el.id == 'tracks' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
-    let trackId = tracks != null ? tracks : track != null ? track : null
-    let timeview = el.id == 'timeview' ? true : null
+//     let asset = el.classList.contains('asset') ? ent1<Asset>(el) : null
+//     let track = el.classList.contains('track') ? ent1<int>(el) : null
+//     let item = el.classList.contains('item') ? ent1<Item>(el) : null
+//     let itemTime = item ? editor.gui2time(p.ex) : 0
+//     let assets = el.id == 'assetpan' ? true : null
+//     let tracks = el.id == 'tracks' ? floor(p.cy / GUI.TRACK_HEIGHT) : null
+//     let trackId = tracks != null ? tracks : track != null ? track : null
+//     let timeview = el.id == 'timeview' ? true : null
 
 
-    let tool = editor.tool
+//     let tool = editor.tool
 
-    switch (editor.tool) {
-        case Tool.None: {
-            if (assets != null && mode == Pint.Down)
-                editor.unsel_assets()
-            else if (asset != null) {
-                if (mode == Pint.Down) {
-                    editor.unsel_assets()
-                    editor.sel_asset(asset, true)
-                } else if (mode == Pint.DragStart)
-                    editor.set_tool(Tool.AssetDrag)
-            }
-            else if (item != null) {
-                //TODO there is double selection for items underneath
-                if (mode == Pint.Down) {
-                    editor.unsel_items()
-                    editor.sel_item(item, true)
-                }
-                else if (mode == Pint.Up)
-                    editor.sel_item(item, false)
-                else if (mode == Pint.DragStart) {
-                    if (abs(p.dy) > abs(p.dx) * 3) editor.set_tool(Tool.ItemRelayer)
-                    else editor.set_tool(Tool.ItemMove)
-                }
-            }
-            else if (track != null && mode == Pint.DragStart)
-                editor.set_tool(Tool.Retime)
-            else if (timeview != null && mode == Pint.DragStart)
-                editor.set_tool(Tool.TimeviewMove)
+//     switch (editor.tool) {
+//         case Tool.None: {
+//             if (assets != null && mode == Pint.Down)
+//                 editor.unsel_assets()
+//             else if (asset != null) {
+//                 if (mode == Pint.Down) {
+//                     editor.unsel_assets()
+//                     editor.sel_asset(asset, true)
+//                 } else if (mode == Pint.DragStart)
+//                     editor.set_tool(Tool.AssetDrag)
+//             }
+//             else if (item != null) {
+//                 //TODO there is double selection for items underneath
+//                 if (mode == Pint.Down) {
+//                     editor.unsel_items()
+//                     editor.sel_item(item, true)
+//                 }
+//                 else if (mode == Pint.Up)
+//                     editor.sel_item(item, false)
+//                 else if (mode == Pint.DragStart) {
+//                     if (abs(p.dy) > abs(p.dx) * 3) editor.set_tool(Tool.ItemRelayer)
+//                     else editor.set_tool(Tool.ItemMove)
+//                 }
+//             }
+//             else if (track != null && mode == Pint.DragStart)
+//                 editor.set_tool(Tool.Retime)
+//             else if (timeview != null && mode == Pint.DragStart)
+//                 editor.set_tool(Tool.TimeviewMove)
 
-        }
-            break;
-        case Tool.AssetDrag:
-            if ((track != null || tracks != null) && mode == Pint.Drop) {
-                editor.reset_tool()
-                for (let x of editor.selAsset) editor.add_item(x.res, track ?? tracks!, editor.gui2time(p.cx))
-            }
-            break;
-        case Tool.ItemMove:
-            if (mode == Pint.DragEnd)
-                editor.reset_tool()
-            if (editor.selItem.size > 1)
-                console.log('some shit', editor.selItem);
-            // for (let x of editor.selItem)
-            // editor.move_item(x, (x as EditorItem).selFrom + editor.gui2time(p.dx))
-            break;
-        case Tool.ItemDelete:
-            if (mode == Pint.Down) {
-                if (item != null) {
-                    editor.remove_item(item)
-                }
-            }
-            break
-        case Tool.ItemSplit:
-            if (mode == Pint.Down) {
-                if (item != null)
-                    editor.split_item(item, itemTime)
-            }
-            break
-        case Tool.ItemRelayer:
-            if (mode == Pint.DragEnd)
-                editor.reset_tool()
-            if (trackId != null && editor.selItem.size > 0) {
-                for (let x of editor.selItem)
-                    editor.relayer_item(x, trackId)
-            }
-            break
-        case Tool.Retime:
-            if (mode == Pint.Drag)
-                editor.retime(editor.gui2time(p.cx))
-            else if (mode == Pint.DragEnd)
-                editor.reset_tool()
-            break
-        case Tool.TimeviewMove:
-            if (mode == Pint.Drag) {
-                editor.timeview_move(p.dx / editor.timeviewGuiWidth * editor.duration)
-            }
-            break
-    }
-}
-function datadrop(p: Pointer, el: HTMLElement, mode: Pint.DragStart | Pint.DragEnd | Pint.Drop) { }
+//         }
+//             break;
+//         case Tool.AssetDrag:
+//             if ((track != null || tracks != null) && mode == Pint.Drop) {
+//                 editor.reset_tool()
+//                 for (let x of editor.selAsset) editor.add_item(x.res, track ?? tracks!, editor.gui2time(p.cx))
+//             }
+//             break;
+//         case Tool.ItemMove:
+//             if (mode == Pint.DragEnd)
+//                 editor.reset_tool()
+//             if (editor.selItem.size > 1)
+//                 console.log('some shit', editor.selItem);
+//             // for (let x of editor.selItem)
+//             // editor.move_item(x, (x as EditorItem).selFrom + editor.gui2time(p.dx))
+//             break;
+//         case Tool.ItemDelete:
+//             if (mode == Pint.Down) {
+//                 if (item != null) {
+//                     editor.remove_item(item)
+//                 }
+//             }
+//             break
+//         case Tool.ItemSplit:
+//             if (mode == Pint.Down) {
+//                 if (item != null)
+//                     editor.split_item(item, itemTime)
+//             }
+//             break
+//         case Tool.ItemRelayer:
+//             if (mode == Pint.DragEnd)
+//                 editor.reset_tool()
+//             if (trackId != null && editor.selItem.size > 0) {
+//                 for (let x of editor.selItem)
+//                     editor.relayer_item(x, trackId)
+//             }
+//             break
+//         case Tool.Retime:
+//             if (mode == Pint.Drag)
+//                 editor.retime(editor.gui2time(p.cx))
+//             else if (mode == Pint.DragEnd)
+//                 editor.reset_tool()
+//             break
+//         case Tool.TimeviewMove:
+//             if (mode == Pint.Drag) {
+//                 editor.timeview_move(p.dx / editor.timeviewGuiWidth * editor.duration)
+//             }
+//             break
+//     }
+// }
+// function datadrop(p: Pointer, el: HTMLElement, mode: Pint.DragStart | Pint.DragEnd | Pint.Drop) { }
 
 
 function name2tool(name: string): Tool {

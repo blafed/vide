@@ -1,7 +1,7 @@
 //init
 function main() {
     //need exactly this to init
-    init_input()
+    // init_input()
     init_gui()
 
     editor = new Editor()
