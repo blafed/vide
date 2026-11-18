@@ -1,6 +1,8 @@
+//generic ui helpers
+
 let entitys = new Map<HTMLElement, any>()
+//visual drag previews independent of actual elements.
 let ghosts = new Map<HTMLElement, HTMLElement>()
-let boxes: Map<HTMLElement, Box> = new Map()
 let drags = new Map<int, Drag>()
 
 
@@ -23,6 +25,7 @@ function create_child<K extends keyof HTMLElementTagNameMap>(el: HTMLElement, ta
     return child
 }
 
+//reuse DOM elements instead of rebuilding everything.
 function update_over<T>(contianer: HTMLElement, arr: Readonly<T[]>, fn: (v: T, el: HTMLElement, first: boolean, i: int) => void) {
     const template = contianer.children[0] as HTMLElement
     template.style.display = 'none'
@@ -55,6 +58,8 @@ function event_closest(ev: Event, selector: string) {
         return null
     return target.closest(selector) as HTMLElement
 }
+
+//associate DOM elements with data
 function ent<T>(el: HTMLElement, set?: T): T | null {
     if (set != undefined) {
         (el as any)._ent = set //useless; only for debug
@@ -154,30 +159,30 @@ function drag_move(d: Drag, el: HTMLElement, useghost = false) {
     }
 }
 
-class Box {
-    bar: HTMLElement
-    body: HTMLElement
+// class Box {
+//     bar: HTMLElement
+//     body: HTMLElement
 
-    constructor(public el: HTMLElement) {
-        this.bar = class1('boxbar', el)
-        this.body = class1('boxbot', el)
-        reg_drag(this.bar, 0, (d) => drag_move(d, el))
-    }
+//     constructor(public el: HTMLElement) {
+//         this.bar = class1('boxbar', el)
+//         this.body = class1('boxbot', el)
+//         reg_drag(this.bar, 0, (d) => drag_move(d, el))
+//     }
 
-    getpos(): Point { return [this.el.offsetLeft, this.el.offsetTop] }
-    setpos(p: Point) { this.el.style.left = `${p[0]}px`; this.el.style.top = `${p[1]}px` }
-}
+//     getpos(): Point { return [this.el.offsetLeft, this.el.offsetTop] }
+//     setpos(p: Point) { this.el.style.left = `${p[0]}px`; this.el.style.top = `${p[1]}px` }
+// }
 
 
-function init_gui() {
-    let forbox = document.querySelectorAll('[for-box]')
-    classes('box').forEach(e => {
-        let box = new Box(e)
-        for (let i = 0; i < forbox.length; i++) if (forbox[i].getAttribute('for-box') == e.id)
-            box.body.appendChild(forbox[i])
-        boxes.set(e, box)
-    })
-}
+// function init_gui() {
+//     let forbox = document.querySelectorAll('[for-box]')
+//     classes('box').forEach(e => {
+//         let box = new Box(e)
+//         for (let i = 0; i < forbox.length; i++) if (forbox[i].getAttribute('for-box') == e.id)
+//             box.body.appendChild(forbox[i])
+//         boxes.set(e, box)
+//     })
+// }
 
 const enum Pint { Down, PendDrag, Up, Drag, Drop, }
 interface Drag {

@@ -208,23 +208,43 @@ function wrap_time(t: float, duration: float, mode: WrapMode): float {
 
 
 type PointCurve = [x: float, y: float, fn?: Ease | ((t: float) => float)]
-type Curve = PointCurve[];
+type Curve = float[]
 
-function curve_eval(c: Curve, x: float): float {
-    if (!c.length) return 0;
-    if (x <= c[0][0]) return c[0][1] //min
-    for (let i = 1; i < c.length; i++) {
-        let a = c[i - 1], b = c[i]
-        if (x <= b[0]) {
-            let t = unlerp(a[0], b[0], x)
-            if (typeof (a[2]) == "number") return tween(a[1], b[1], t, a[2])
-            else if (typeof (a[2]) == "function") return a[1] + (b[1] - a[1]) * a[2](t)
-            return lerp(a[1], b[1], t) //map
+function curve_eval(curve: Curve, x: float, fn?: Ease): float {
+    if (!curve.length) return 0;
+    if (curve.length % 2 != 0) throw 'odd curve: ' + curve.length
+
+    if (x < curve[0]) return curve[1]
+
+    for (let i = 2; i < curve.length; i += 2) {
+        if (x <= curve[i]) {
+            let a = curve[i - 2], b = curve[i]
+            let t = unlerp(a, b, x)
+            // if (typeof fn == 'function') t = fn(t, x)
+            if (typeof fn == 'number') t = tween(0, 1, t, fn)
+            return lerp(curve[i - 1], curve[i + 1], t)
         }
     }
-    return c[c.length - 1][1] //max
+
+    return curve[curve.length - 1]
 }
 
+// function curve_eval(c: Curve, x: float): float {
+//     if (!c.length) return 0;
+//     if (c.length % 2 != 0) throw 'non odd curve: ' + c.length
+
+//     if (x <= c[0][0]) return c[0][1] //min
+//     for (let i = 1; i < c.length; i++) {
+//         let a = c[i - 1], b = c[i]
+//         if (x <= b[0]) {
+//             let t = unlerp(a[0], b[0], x)
+//             if (typeof (a[2]) == "number") return tween(a[1], b[1], t, a[2])
+//             else if (typeof (a[2]) == "function") return a[1] + (b[1] - a[1]) * a[2](t)
+//             return lerp(a[1], b[1], t) //map
+//         }
+//     }
+//     return c[c.length - 1][1] //max
+// }
 
 
 function color(r: float, g: float, b: float, a: float = 1) {
@@ -232,10 +252,12 @@ function color(r: float, g: float, b: float, a: float = 1) {
     return "#" + r.toString(16).padStart(2, "0") + g.toString(16).padStart(2, "0") + b.toString(16).padStart(2, "0") + a.toString(16).padStart(2, "0")
 }
 
-function colori(r: int, g: int, b: int, a: float = 1) {
+function rgba(r: int, g: int, b: int, a: float = 1) {
     r = clamp(r, 0, 255), g = clamp(g, 0, 255), b = clamp(b, 0, 255), a = round(clamp(a, 0, 1) * 255)
     return "#" + r.toString(16).padStart(2, "0") + g.toString(16).padStart(2, "0") + b.toString(16).padStart(2, "0") + a.toString(16).padStart(2, "0")
 }
+
+// function coloro(obj: { r: int, g: int, b: int, a: float }) { return rgba(obj.r, obj.g, obj.b, obj.a) }
 
 function sleep(ms: number) { return new Promise<void>(resolve => setTimeout(resolve, ms)) }
 function frame() { return new Promise<void>(resolve => requestAnimationFrame(() => resolve())) }

@@ -6,10 +6,10 @@
         "strict": true,
         "sourceMap": true,
         "allowJs": false,
+        "removeComments": true,
     },
     "include": [
         "src",
-        "extra",
-        "main.ts"
-    ],
+        "ex/demo.ts"
+    ]
 }
