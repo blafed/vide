@@ -2,14 +2,14 @@
     "compilerOptions": {
         "target": "es2020",
         "module": "none",
-        "outFile": "vide.js",
+        "outFile": "../public/vide.js",
         "strict": true,
         "sourceMap": true,
         "allowJs": false,
         "removeComments": true,
     },
     "include": [
-        "src",
-        "ex/demo.ts"
+        "*.ts",
+        "../ex/demo.ts"
     ]
 }

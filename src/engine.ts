@@ -160,7 +160,7 @@ async function items_render(items: Item[], ctx: Canvas, from: float, to: float, 
 }
 
 class Proc {
-    e: Ease
+    e: Ease = Ease.Linear
     t: float = 0; x: float = 0; y: float = 0
     fontFamily = 'monospace'; fontSize = 16; fontWeight = 400;
 
