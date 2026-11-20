@@ -3,7 +3,7 @@
     --bgc: #ddd; /*content background*/
     --border: #ccc;
     --fg: #222;
-    --accent: #3b82f6;
+    --accent: #f6833b;
     --select: #3b83f6a5;
     --warn: #ffd500;
     --error: #ff1100;
@@ -15,7 +15,7 @@
     --bgc: #222;
     --border: #444;
     --fg: #ddd;
-    --accent: #3b82f6;
+    --accent: #c66021;
     --select: #3b83f655;
     --warn: #ffd500;
     --error: #ff1100;
@@ -26,10 +26,14 @@ body{
     touch-action: none; user-select: none;
     background-color: var(--bg); color: var(--fg);
     display: flex; flex-direction: column; align-items: center;
-    font-family: Consolas, monospace;
 }
 
-.panel{border: 1px solid var(--border);}
+*{font-family: Consolas, monospace;}
+
+.panel{border: 1px solid var(--border);display: flex; flex-direction: column; justify-content: center; align-items: center;}
 #timepan{width: 800px; height: 300px;}
 .track{width: 100%; height: 100px;background-color: black;}
 .item{width: 200px; height: 100%; background-color: var(--bgc);}
+
+button {background-color: var(--accent); color: var(--fg); cursor: pointer; font-size: 16px; height: 16px; box-sizing: content-box; padding: 4px;}
+button {border-radius: 8px; border: none; margin: 0;}

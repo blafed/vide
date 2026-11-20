@@ -41,12 +41,14 @@ function range(a, b) {
 }
 function point(x, y) { return [x, y]; }
 function rect(x, y, w, h) { return [x, y, w, h]; }
+function rect_from_canvas(c) { return [0, 0, c.canvas.width, c.canvas.height]; }
 function rect_clone(r) { return [...r]; }
 function rect_one() { return [0, 0, 1, 1]; }
 function rect_zero() { return [0, 0, 0, 0]; }
 function rect_canvas(c) { return rect(0, 0, c.canvas.width, c.canvas.height); }
 function rect_img(c) { return rect(0, 0, c.width, c.height); }
 function rect_scale(r, w, h) { return rect(r[0] * w, r[1] * h, r[2] * w, r[3] * h); }
+function rect_contains(r, x, y) { return x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]; }
 var FitMethod;
 (function (FitMethod) {
     FitMethod[FitMethod["Stretch"] = 0] = "Stretch";
@@ -225,6 +227,18 @@ function curve_eval(curve, x, fn) {
     }
     return curve[curve.length - 1];
 }
+function curve_add(curve, x, y) {
+    for (let i = 0; i < curve.length; i += 2) {
+        if (curve[i] >= x) {
+            if (curve[i] == x)
+                curve[i + 1] = y;
+            else
+                curve.splice(i, 0, x, y);
+            return;
+        }
+    }
+    curve.push(x, y);
+}
 function color(r, g, b, a = 1) {
     r = round(clamp(r, 0, 1) * 255), g = round(clamp(g, 0, 1) * 255), b = round(clamp(b, 0, 1) * 255), a = round(clamp(a, 0, 1) * 255);
     return "#" + r.toString(16).padStart(2, "0") + g.toString(16).padStart(2, "0") + b.toString(16).padStart(2, "0") + a.toString(16).padStart(2, "0");
@@ -258,9 +272,9 @@ function canvas_strokez(ctx, dst) { ctx.strokeRect(dst[0] * ctx.canvas.width, ds
 function canvas_strokez_in(ctx, dst, lw) { ctx.strokeRect(dst[0] * ctx.canvas.width + lw / 2, dst[1] * ctx.canvas.height + lw / 2, dst[2] * ctx.canvas.width - lw, dst[3] * ctx.canvas.height - lw); }
 function canvas_textz(ctx, text, dst) { ctx.fillText(text, dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height); }
 function canvas_text(ctx, text, dst) { ctx.fillText(text, dst[0], dst[1]); }
-function canvas_draw(ctx, b, dst, src) {
+function canvas_draw(ctx, b, dst, src, sw = 1, sh = 1) {
     if (src)
-        ctx.drawImage(b, src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3]);
+        ctx.drawImage(b, src[0] * sw, src[1] * sh, src[2] * sw, src[3] * sh, dst[0], dst[1], dst[2], dst[3]);
     else
         ctx.drawImage(b, dst[0], dst[1], dst[2], dst[3]);
 }
@@ -309,10 +323,82 @@ function canvas(e) {
 class SpaceEditor {
     constructor(el) {
         this.el = el;
+        this.space = rect(0, 0, 200, 200);
+        this.t = 0;
         this.items = [];
-        this.space = canvas(el);
+        this.curves = [];
+        this.itemsHitStart = [];
+        this.selItems = new Set();
+        this.dragStarts = new Map();
+        this.canvas = canvas(el);
+        this.space = rect_from_canvas(this.canvas);
+        reg_drag(this.el, 0, this.on_drag.bind(this));
     }
-    update() { }
+    s2g(x, y) {
+        x = lerp(0, this.canvas.canvas.width, unlerp(this.space[0], this.space[0] + this.space[2], x));
+        y = lerp(0, this.canvas.canvas.height, unlerp(this.space[1], this.space[1] + this.space[3], y));
+        return [x, y];
+    }
+    g2s(x, y) {
+        x = lerp(this.space[0], this.space[0] + this.space[2], unlerp(0, this.canvas.canvas.width, x));
+        y = lerp(this.space[1], this.space[1] + this.space[3], unlerp(0, this.canvas.canvas.height, y));
+        return [x, y];
+    }
+    on_drag(d) {
+        let items = this.items_hit(d.ex, d.ey);
+        if (d.pint == 0) {
+            this.itemsHitStart = items;
+            if (!d.ev.shiftKey) {
+                this.selItems.clear();
+                this.dragStarts.clear();
+            }
+            if (items.length) {
+                let it = items[items.length - 1];
+                this.selItems.add(it);
+                for (let it of this.selItems)
+                    this.dragStarts.set(it, point(it.rect[0], it.rect[1]));
+            }
+        }
+        let cz = this.g2s(d.dx, d.dy);
+        for (let it of this.selItems) {
+            let o = this.dragStarts.get(it);
+            let x = o[0] + cz[0], y = o[1] + cz[1];
+            if (this.itemsHitStart.length == 0) {
+                cz = this.g2s(d.ex, d.ey);
+                x = cz[0];
+                y = cz[1];
+            }
+            curves_add(this.curves, it, 0, this.t - it.from, x);
+            curves_add(this.curves, it, 1, this.t - it.from, y);
+        }
+        this.update();
+    }
+    items_hit(x, y) {
+        let time = this.t;
+        let hits = [];
+        for (let it of this.items)
+            if (time >= it.from && time <= it.to && rect_contains(it.rect, x, y))
+                hits.push(it);
+        return hits;
+    }
+    update() {
+        canvas_clear_all(this.canvas);
+        items_draw2(this.items, this.curves, this.canvas, this.t);
+        this.canvas.strokeStyle = '#000';
+        this.canvas.lineWidth = 2;
+        for (let x of this.selItems) {
+            canvas_rect(this.canvas, x.rect);
+            this.canvas.stroke();
+            this.canvas.lineWidth = 1;
+            this.canvas.strokeStyle = '#fff';
+            this.canvas.stroke();
+        }
+    }
+    play(t) { this.t = t; this.update(); }
+    videoshot(dur) {
+        console.log(this.canvas.canvas.width);
+        return new VideoFrame(this.canvas.canvas, { timestamp: this.t * 1000000, duration: dur * 1000000 });
+    }
 }
 class TimeEditor {
     constructor(el) {
@@ -326,7 +412,7 @@ class TimeEditor {
 }
 function item_create(res = null, from = 0, to = 1, rect = [0, 0, 100, 100]) {
     return {
-        res: res, layer: 0, from, to, sfrom: 0, sto: 1, rect, srect: [0, 0, 1, 1], opacity: 1,
+        res: res, layer: 0, from, to, sfrom: 0, sto: 1, rect, srect: [0, 0, 1, 1], opacity: 1, rotation: 0,
         props: { ...((res?.constructor).PROPS ?? {}) }
     };
 }
@@ -347,6 +433,7 @@ function item_prop(it, prop) {
         return it.props[prop];
     }
     switch (prop) {
+        case 13: return it.rotation;
         case 0: return it.rect[0];
         case 1: return it.rect[1];
         case 2: return it.rect[2];
@@ -370,6 +457,9 @@ function item_propx(it, prop, value) {
         return;
     }
     switch (prop) {
+        case 13:
+            it.rotation = value;
+            break;
         case 8:
             it.opacity = value;
             break;
@@ -416,15 +506,28 @@ function item_curve(it, prop) {
     c.prop = prop;
     return c;
 }
+function curves_add(curves, it, prop, t, val) {
+    let c = curves.find(x => x.item == it && x.prop == prop);
+    if (c == null)
+        curves.push(c = item_curve(it, prop));
+    curve_add(c, t, val);
+}
 function items_draw(items, ctx, t) {
     for (let it of items) {
         if (t < it.from || t > it.to)
             continue;
         let tr = lerp(it.sfrom, it.sto, unlerp(it.from, it.to, t));
+        ctx.globalAlpha = it.opacity;
         ctx.save();
         if (it.clip)
             canvas_clipz(ctx, it.clip);
-        ctx.globalAlpha = it.opacity;
+        if (it.rotation) {
+            const cx = it.rect[0] + it.rect[2] / 2;
+            const cy = it.rect[1] + it.rect[3] / 2;
+            ctx.translate(cx, cy);
+            ctx.rotate(it.rotation);
+            ctx.translate(-cx, -cy);
+        }
         it.res.draw(ctx, it.rect, tr, it.srect, it.props);
         ctx.restore();
     }
@@ -481,6 +584,67 @@ class TestRes {
         ctx.fillText(t.toFixed(2), x + w / 2, y + h / 2);
         return true;
     }
+}
+class ImageRes {
+    constructor(blob, image) {
+        this.blob = blob;
+        this.image = image;
+    }
+    draw(ctx, dst, t, src, props) {
+        if (!this.image)
+            return false;
+        canvas_draw(ctx, this.image, dst, src, this.image.width, this.image.height);
+        return true;
+    }
+    async load(chunk) { if (!this.image)
+        this.image = await createImageBitmap(this.blob); }
+    unload(chunk) { if (this.image) {
+        this.image.close();
+        this.image = undefined;
+    } }
+}
+function xideo_create(width, height, duration) {
+    const codec = 'avc1.420028';
+    let ex = { track: -1, mp4: mp4_create_file(), width, height, duration, encoder: null };
+    ex.encoder = new VideoEncoder({
+        output: (chunk, meta) => {
+            if (ex.track < 0) {
+                if (!meta || !meta.decoderConfig) {
+                    console.error('missing meta or meta.decoderConfig', meta);
+                    return;
+                }
+                ex.track = mp4_add_track(ex.mp4, codec, meta.decoderConfig.description, duration, width, height);
+            }
+            let data = new Uint8Array(new ArrayBuffer(chunk.byteLength));
+            chunk.copyTo(data);
+            mp4_add_video_chunk(ex.mp4, ex.track, data, chunk);
+        },
+        error: (e) => { console.error('encoding error: ', e); }
+    });
+    ex.encoder.configure({ codec, width, height });
+    return ex;
+}
+function xideo_add(frames, exi) {
+    for (let frame of frames)
+        exi.encoder.encode(frame);
+}
+async function xideo_finish(ex) {
+    await ex.encoder.flush();
+    ex.encoder.close();
+    let stream = ex.mp4.getBuffer();
+    let blob = new Blob([stream.buffer], { type: 'video/mp4' });
+    return blob;
+}
+function framegive(cb) {
+    let last = null;
+    const loop = (now) => {
+        if (last !== null && !cb((now - last) / 1000))
+            return;
+        last = now;
+        requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+    return id;
 }
 var effects;
 (function (effects) {
@@ -712,8 +876,7 @@ async function mp4_info(f) {
                 reject(e);
             }
         };
-        const buffer = await f.arrayBuffer();
-        buffer.fileStart = 0;
+        const buffer = MP4Box.MP4BoxBuffer.fromArrayBuffer(await f.arrayBuffer(), 0);
         mp4box.appendBuffer(buffer);
         mp4box.flush();
     });
@@ -792,9 +955,26 @@ function mp4_add_track(f, codec, desc, duration, width, height) {
     return f.addTrack(trackOptions);
 }
 function mp4_add_video_chunk(f, track, data, chunk) {
+    if (chunk.duration == undefined)
+        throw new Error('chunk invalid duration ' + chunk);
     let sample = { dts: chunk.timestamp, cts: chunk.timestamp, duration: chunk.duration, is_sync: chunk.type == 'key' };
     f.addSample(track, data, sample);
     return sample;
+}
+function debug_bitmap(b) {
+    if (b instanceof CanvasRenderingContext2D)
+        b = b.canvas;
+    const canvas = document.createElement("canvas");
+    canvas.width = b.width;
+    canvas.height = b.height;
+    const ctx = canvas.getContext("2d");
+    let rect = ctx.drawImage(b, 0, 0);
+    console.log("%c ", `
+        font-size: 1px;
+        padding: ${b.height / 2}px ${b.width / 2}px;
+        background: url(${canvas.toDataURL()}) no-repeat;
+        background-size: contain;
+    `);
 }
 let entitys = new Map();
 let ghosts = new Map();
@@ -964,6 +1144,7 @@ function recalc_drag(obj, el, e, move, thr) {
             obj.excced = true;
         obj.pint = obj.excced ? 3 : 1;
     }
+    obj.ev = e;
 }
 function reg_drag(el, threshold = 4, cb) {
     let obj = { pint: 0, x: 0, y: 0, dx: 0, dy: 0, ox: 0, oy: 0, ex: 0, ey: 0, startx: 0, starty: 0, excced: false, started: null, target: null };
@@ -1113,8 +1294,63 @@ async function demo_simple(ctx) {
     canvas_clear_all(ctx);
     items_draw(items, ctx, 1.3);
 }
-function main() {
+async function demo_image(ctx) {
+    let blob = await (await fetch('public/favicon.png')).blob();
+    let res = new ImageRes(blob);
+    await res.load(0);
+    let items = [item_create(res, 0, 0.5, [100, 100, 200, 200])];
+    items[0].rotation = 45;
+    items_draw(items, ctx, 0);
+}
+function demo_play_export() {
+    let items = [item_create(new TestRes()), item_create(new TestRes(), 0, 1.3, [300, 200, 200, 200])];
+    items[0].from = 0.3;
+    items[0].to = 1.3;
+    let curves = [item_curve(items[0], 0), item_curve(items[0], 1), item_curve(items[0], 8)];
+    curves[0].push(0.4, 100);
+    curves[1].push(0.4, 0);
+    curves[1].push(1, 100);
+    curves[2].push(1, 0.2);
+    spaceEditor.items = items;
+    spaceEditor.curves = curves;
+    id('play').onclick = () => playing = !playing;
+    id('export').onclick = () => { t = 0; exporting = true; };
+    let t = 0;
+    let playing = true;
+    let exporting = false;
+    let exportFrames = [];
+    const export_video = async function () {
+        exporting = false;
+        let xideo = xideo_create(exportFrames[0].displayWidth, exportFrames[1].displayHeight, 1.3);
+        xideo_add(exportFrames, xideo);
+        let blob = await xideo_finish(xideo);
+        exportFrames = [];
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = 'video.mp4';
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+    framegive((dt) => {
+        if (playing) {
+            spaceEditor.play(t);
+            t += dt;
+            if (exporting)
+                exportFrames.push(spaceEditor.videoshot(dt));
+            if (t > 1.3) {
+                t = 0;
+                if (exporting)
+                    export_video();
+            }
+        }
+        return true;
+    });
+}
+async function main() {
     spaceEditor = new SpaceEditor(id('spacepan'));
-    demo_simple(spaceEditor.space);
+    let ctx = spaceEditor.canvas;
+    ctx.imageSmoothingEnabled = false;
+    demo_play_export();
 }
 //# sourceMappingURL=vide.js.map

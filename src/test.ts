@@ -1,20 +1,20 @@
-// function debug_bitmap(b: CanvasImageSource | Canvas) {
-//     if (b instanceof CanvasRenderingContext2D) b = b.canvas;
+function debug_bitmap(b: { width: int, height: int } & (CanvasImageSource | Canvas)) {
+    if (b instanceof CanvasRenderingContext2D) b = b.canvas;
 
-//     const canvas = document.createElement("canvas")
-//     canvas.width = b.width
-//     canvas.height = b.height
+    const canvas = document.createElement("canvas")
+    canvas.width = b.width
+    canvas.height = b.height
 
-//     const ctx = canvas.getContext("2d")!
-//     let rect = ctx.drawImage(b, 0, 0)
+    const ctx = canvas.getContext("2d")!
+    let rect = ctx.drawImage(b, 0, 0)
 
-//     console.log("%c ", `
-//         font-size: 1px;
-//         padding: ${b.height / 2}px ${b.width / 2}px;
-//         background: url(${canvas.toDataURL()}) no-repeat;
-//         background-size: contain;
-//     `)
-// }
+    console.log("%c ", `
+        font-size: 1px;
+        padding: ${b.height / 2}px ${b.width / 2}px;
+        background: url(${canvas.toDataURL()}) no-repeat;
+        background-size: contain;
+    `)
+}
 
 // async function mock_file_write(path: string, data: string | Blob | ArrayBuffer) {
 //     const root = await navigator.storage.getDirectory()

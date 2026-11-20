@@ -11,6 +11,8 @@ interface Item {
     srect: Rect //src rect
     clip?: Rect, //relative
 
+    rotation: float
+
     opacity: float
     props: ResProps
 }
@@ -20,7 +22,7 @@ interface Scene {
     items: Item[], curves: ItemCurve[]
 }
 
-const enum Prop { DstX, DstY, DstW, DstH, SrcX, SrcY, SrcW, SrcH, Opacity, ClipX, ClipY, ClipW, ClipH }
+const enum Prop { DstX, DstY, DstW, DstH, SrcX, SrcY, SrcW, SrcH, Opacity, ClipX, ClipY, ClipW, ClipH, Rot }
 interface Anim { item: Item, prop: Prop | string, curve: Curve }
 type ItemCurve = Curve & { item: Item, prop: Prop | string }
 type ResProps = Record<string, float>
@@ -28,7 +30,7 @@ type ResProps = Record<string, float>
 
 function item_create(res: Res | null = null, from = 0, to = 1, rect: Rect = [0, 0, 100, 100]): Item {
     return {
-        res: res!, layer: 0, from, to, sfrom: 0, sto: 1, rect, srect: [0, 0, 1, 1], opacity: 1,
+        res: res!, layer: 0, from, to, sfrom: 0, sto: 1, rect, srect: [0, 0, 1, 1], opacity: 1, rotation: 0,
         props: { ...((res?.constructor as any).PROPS ?? {}) }
     }
 }
@@ -47,6 +49,7 @@ function item_prop(it: Item, prop: Prop | string) {
         return it.props[prop]
     }
     switch (prop) {
+        case Prop.Rot: return it.rotation;
         case Prop.DstX: return it.rect[0];
         case Prop.DstY: return it.rect[1];
         case Prop.DstW: return it.rect[2];
@@ -71,6 +74,7 @@ function item_propx(it: Item, prop: Prop | string, value: number) {
     }
 
     switch (prop) {
+        case Prop.Rot: it.rotation = value; break;
         case Prop.Opacity: it.opacity = value; break;
         case Prop.DstX: it.rect[0] = value; break;
         case Prop.DstY: it.rect[1] = value; break;
@@ -96,6 +100,12 @@ function item_curve(it: Item, prop: Prop | string): ItemCurve {
     c.item = it; c.prop = prop;
     return c;
 }
+function curves_add(curves: ItemCurve[], it: Item, prop: Prop, t: float, val: float) {
+    let c = curves.find(x => x.item == it && x.prop == prop);
+    if (c == null) curves.push(c = item_curve(it, prop));
+
+    curve_add(c, t, val);
+}
 
 function items_draw(items: Item[], ctx: Canvas, t: float) {
     //this function expects items are sorted
@@ -103,9 +113,22 @@ function items_draw(items: Item[], ctx: Canvas, t: float) {
         if (t < it.from || t > it.to) continue
         let tr = lerp(it.sfrom, it.sto, unlerp(it.from, it.to, t))
 
-        ctx.save();
-        if (it.clip) canvas_clipz(ctx, it.clip);
+
         ctx.globalAlpha = it.opacity;
+
+        ctx.save();
+
+        if (it.clip)
+            canvas_clipz(ctx, it.clip);
+
+        if (it.rotation) {
+            const cx = it.rect[0] + it.rect[2] / 2;
+            const cy = it.rect[1] + it.rect[3] / 2;
+
+            ctx.translate(cx, cy);
+            ctx.rotate(it.rotation);
+            ctx.translate(-cx, -cy);
+        }
 
         it.res.draw(ctx, it.rect, tr, it.srect, it.props);
 
@@ -165,7 +188,7 @@ type SquareResProps = ResColorProps | { ow: float, or: int, og: int, ob: int, oa
 interface Res {
     draw(ctx: Canvas, dst: Rect, t: float, src?: Rect, props?: ResProps): boolean //dst is pixels; t and src are normalized
     load?(chunk: int): Promise<void>
-    unload?(chunk: int): Promise<void>
+    unload?(chunk: int): void
     chunks?(from: float, to: float): int[]
 }
 
@@ -184,4 +207,75 @@ class TestRes implements Res {
         ctx.fillText(t.toFixed(2), x + w / 2, y + h / 2);
         return true;
     }
+}
+
+class ImageRes implements Res {
+    constructor(public blob: Blob, public image?: ImageBitmap) { }
+
+    draw(ctx: Canvas, dst: Rect, t: float, src?: Rect, props?: ResProps): boolean {
+        if (!this.image) return false;
+        canvas_draw(ctx, this.image, dst, src, this.image.width, this.image.height);
+        return true;
+    }
+    async load(chunk: int) { if (!this.image) this.image = await createImageBitmap(this.blob); }
+    unload(chunk: int) { if (this.image) { this.image.close(); this.image = undefined; } }
+}
+
+//exportvideo
+interface Xideo {
+    width: int, height: int, duration: float
+    encoder: VideoEncoder,
+    track: int,
+    mp4: Mp4File, //mp4box.createfile
+}
+
+function xideo_create(width: int, height: int, duration: float): Xideo {
+    const codec = 'avc1.420028'
+
+    let ex: Xideo = { track: -1, mp4: mp4_create_file(), width, height, duration, encoder: null! };
+    ex.encoder = new VideoEncoder({
+        output: (chunk, meta) => {
+            if (ex.track < 0) {
+                if (!meta || !meta.decoderConfig) {
+                    console.error('missing meta or meta.decoderConfig', meta);
+                    return;
+                }
+                ex.track = mp4_add_track(ex.mp4, codec, meta.decoderConfig.description, duration, width, height)
+            }
+
+            let data = new Uint8Array(new ArrayBuffer(chunk.byteLength))
+            chunk.copyTo(data)
+            mp4_add_video_chunk(ex.mp4, ex.track, data, chunk)
+        },
+        error: (e) => { console.error('encoding error: ', e) }
+    })
+
+    ex.encoder.configure({ codec, width, height })
+
+    return ex
+}
+
+function xideo_add(frames: VideoFrame[], exi: Xideo) {
+    for (let frame of frames)
+        exi.encoder.encode(frame)
+
+}
+
+async function xideo_finish(ex: Xideo) {
+    await ex.encoder.flush()
+    ex.encoder.close()
+
+    let stream = ex.mp4.getBuffer()
+    let blob = new Blob([stream.buffer], { type: 'video/mp4' })
+    return blob
+}
+
+function framegive(cb: (dt: float) => boolean | void) {
+    let last: int | null = null
+    const loop = (now: int) => {
+        if (last !== null && !cb((now - last) / 1000)) return
+        last = now; requestAnimationFrame(loop)
+    }
+    requestAnimationFrame(loop)
+    return id
 }

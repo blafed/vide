@@ -195,6 +195,7 @@ interface Drag {
     excced: boolean,
     started: HTMLElement
     target: HTMLElement
+    ev: PointerEvent
 }
 
 function recalc_drag(obj: Drag, el: HTMLElement, e: PointerEvent, move: boolean, thr: float) {
@@ -222,6 +223,7 @@ function recalc_drag(obj: Drag, el: HTMLElement, e: PointerEvent, move: boolean,
 
         obj.pint = obj.excced ? Pint.Drag : Pint.PendDrag
     }
+    obj.ev = e
 }
 
 function reg_drag(el: HTMLElement, threshold = 4, cb: (d: Drag) => void) {

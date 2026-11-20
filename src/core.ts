@@ -54,12 +54,14 @@ function range(a: any, b?: any): Point {
 
 function point(x: float, y: float): Point { return [x, y] }
 function rect(x: float, y: float, w: float, h: float): Rect { return [x, y, w, h] }
+function rect_from_canvas(c: Canvas): Rect { return [0, 0, c.canvas.width, c.canvas.height]; }
 function rect_clone(r: Rect): Rect { return [...r] }
 function rect_one(): Rect { return [0, 0, 1, 1] }
 function rect_zero(): Rect { return [0, 0, 0, 0] }
 function rect_canvas(c: Canvas): Rect { return rect(0, 0, c.canvas.width, c.canvas.height) }
 function rect_img(c: ImageBitmap): Rect { return rect(0, 0, c.width, c.height) }
 function rect_scale(r: Readonly<Rect>, w: float, h: float) { return rect(r[0] * w, r[1] * h, r[2] * w, r[3] * h); }
+function rect_contains(r: Rect, x: float, y: float) { return x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]; }
 
 enum FitMethod {
     Stretch,      // Ignore aspect ratio
@@ -231,6 +233,17 @@ function curve_eval(curve: Curve, x: float, fn?: Ease): float {
     return curve[curve.length - 1]
 }
 
+function curve_add(curve: Curve, x: float, y: float) {
+    for (let i = 0; i < curve.length; i += 2) {
+        if (curve[i] >= x) {
+            if (curve[i] == x) curve[i + 1] = y;
+            else curve.splice(i, 0, x, y);
+            return;
+        }
+    }
+    curve.push(x, y);
+}
+
 // function curve_eval(c: Curve, x: float): float {
 //     if (!c.length) return 0;
 //     if (c.length % 2 != 0) throw 'non odd curve: ' + c.length
@@ -295,8 +308,8 @@ function canvas_strokez_in(ctx: Canvas, dst: Rect, lw: float) { ctx.strokeRect(d
 function canvas_textz(ctx: Canvas, text: string, dst: Rect) { ctx.fillText(text, dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height); }
 function canvas_text(ctx: Canvas, text: string, dst: Rect) { ctx.fillText(text, dst[0], dst[1]); }
 
-function canvas_draw(ctx: Canvas, b: CanvasImageSource, dst: Rect, src?: Rect) {
-    if (src) ctx.drawImage(b, src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3])
+function canvas_draw(ctx: Canvas, b: CanvasImageSource, dst: Rect, src?: Rect, sw = 1, sh = 1) {
+    if (src) ctx.drawImage(b, src[0] * sw, src[1] * sh, src[2] * sw, src[3] * sh, dst[0], dst[1], dst[2], dst[3])
     else ctx.drawImage(b, dst[0], dst[1], dst[2], dst[3])
 }
 

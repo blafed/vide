@@ -1,1 +1,10 @@
-fuck around and find out
+x fuck around and find out
+
+x item rotation
+res:
+    x image
+    x video export
+    video res
+
+space_editor:
+    x drag items

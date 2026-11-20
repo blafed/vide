@@ -4,6 +4,8 @@ interface Mp4Video {
     codec: string; description?: Uint8Array; samples: MP4Box.Sample[]
 }
 
+type Mp4File = ReturnType<typeof MP4Box.createFile>
+
 async function mp4_info(f: File): Promise<Mp4Video> {
     return new Promise(async (resolve, reject) => {
         const mp4box = MP4Box.createFile();
@@ -31,9 +33,7 @@ async function mp4_info(f: File): Promise<Mp4Video> {
             }
         };
 
-        const buffer = await f.arrayBuffer();
-        (buffer as any).fileStart = 0;
-
+        const buffer = MP4Box.MP4BoxBuffer.fromArrayBuffer(await f.arrayBuffer(), 0);
         mp4box.appendBuffer(buffer);
         mp4box.flush();
     });
@@ -126,15 +126,18 @@ function mp4_sample_dur(s: MP4Box.Sample) {
 }
 
 function mp4_create_file() { return MP4Box.createFile() }
-function mp4_add_track(f: any, codec: string, desc: AllowSharedBufferSource | undefined, duration: float, width: int, height: int): int {
-    let trackOptions = {
+function mp4_add_track(f: Mp4File, codec: string, desc: AllowSharedBufferSource | undefined, duration: float, width: int, height: int): int {
+    let trackOptions: any = {
         timescale: 1_000_000, media_duration: duration * 1_000_000,
         width, height, codec, avcDecoderConfigRecord: desc,
     }
     return f.addTrack(trackOptions)
 }
-function mp4_add_video_chunk(f: any, track: int, data: ArrayBuffer, chunk: EncodedVideoChunk) {
-    let sample = { dts: chunk.timestamp, cts: chunk.timestamp, duration: chunk.duration, is_sync: chunk.type == 'key' }
+function mp4_add_video_chunk(f: Mp4File, track: int, data: Uint8Array<ArrayBuffer>, chunk: EncodedVideoChunk) {
+    if (chunk.duration == undefined)
+        throw new Error('chunk invalid duration ' + chunk)
+
+    let sample: MP4Box.Sample | object = { dts: chunk.timestamp, cts: chunk.timestamp, duration: chunk.duration, is_sync: chunk.type == 'key' }
     f.addSample(track, data, sample)
     return sample
 }
