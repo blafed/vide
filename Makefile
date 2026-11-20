@@ -2,7 +2,7 @@
 
 dev:
 	@( \
-		tsc --watch & \
-		live-server --ignore="**/*.ts" & \
+		tsc -p src --watch & \
+		live-server . --ignore="**/*.ts" & \
 		wait \
 	)

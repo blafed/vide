@@ -1,38 +1,7 @@
-///<reference path="../lib/mp4box.js" />
 
 interface Mp4Video {
     file: File, width: number, height: number, duration: float,
-    codec: string; description?: Uint8Array; samples: Mp4Sample[]
-}
-
-interface Mp4Sample {
-    alreadyRead: number;
-    chunk_index: number;
-    chunk_run_index: number;
-
-    cts: number;
-    dts: number;
-    duration: number;
-    timescale: number;
-
-    data: Uint8Array;
-
-    degradation_priority: number;
-    depends_on: number;
-    has_redundancy: number;
-    is_depended_on: number;
-    is_leading: number;
-
-    is_sync: boolean;
-
-    number: number;
-    offset: number;
-    size: number;
-
-    track_id: number;
-    description_index: number;
-
-    description: any; // MP4Box sample description object
+    codec: string; description?: Uint8Array; samples: MP4Box.Sample[]
 }
 
 async function mp4_info(f: File): Promise<Mp4Video> {
@@ -49,7 +18,7 @@ async function mp4_info(f: File): Promise<Mp4Video> {
                 mp4box.setExtractionOptions(track.id);
                 mp4box.start();
 
-                mp4box.onSamples = (track_id: any, ref: any, samples: Mp4Sample[]) => {
+                mp4box.onSamples = (track_id, ref, samples) => {
                     console.log(track)
                     resolve({
                         file: f, codec: track.codec, width: track.track_width, height: track.track_height, duration: track.duration / track.timescale,
@@ -120,6 +89,10 @@ async function mp4_to_frames(file: File) {
     decoder.configure({ codec: info.codec, description: info.description })
 
     for (let sample of info.samples) {
+        if (!sample.data) {
+            console.error('error encoding a mp4 sample', sample)
+            continue
+        }
         decoder.decode(
             new EncodedVideoChunk({
                 type: sample.is_sync ? 'key' : 'delta',
@@ -135,7 +108,7 @@ async function mp4_to_frames(file: File) {
     return frames.sort((a, b) => a.timestamp - b.timestamp)
 }
 
-function mp4_samples_fps(samples: Mp4Sample[]) {
+function mp4_samples_fps(samples: MP4Box.Sample[]) {
     let first = samples[0];
     let last = samples[samples.length - 1];
 
@@ -145,10 +118,10 @@ function mp4_samples_fps(samples: Mp4Sample[]) {
     return samples.length * first.timescale / (end - start);
 }
 
-function mp4_sample_pts(s: Mp4Sample) {
+function mp4_sample_pts(s: MP4Box.Sample) {
     return s.cts / s.timescale
 }
-function mp4_sample_dur(s: Mp4Sample) {
+function mp4_sample_dur(s: MP4Box.Sample) {
     return s.duration / s.timescale
 }
 
