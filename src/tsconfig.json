@@ -10,6 +10,7 @@
     },
     "include": [
         "*.ts",
+        "../lib/*.d.ts",
         "../ex/demo.ts"
-    ]
+    ],
 }
