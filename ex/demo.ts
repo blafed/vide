@@ -1,30 +1,24 @@
-let timeEditor: TimeEditor
-let proc = new Proc()
+let spaceEditor: SpaceEditor
+
+async function demo_simple(ctx: Canvas) {
+    let items = [item_create(new TestRes())]
+    items[0].from = 0.3
+    items[0].to = 1.3
+    let curves: ItemCurve[] = [item_curve(items[0], Prop.DstX), item_curve(items[0], Prop.DstY), item_curve(items[0], Prop.Opacity)]
+
+    curves[0].push(0.4, 100)
+    curves[1].push(0.4, 0)
+    curves[1].push(1, 100)
+    curves[2].push(1, 0.2)
+
+    await items_render2(items, curves, ctx, 0, 1.3, 1 / 100)
+
+    for (let x of curves) item_uncurvify(x)
+    canvas_clear_all(ctx);
+    items_draw(items, ctx, 1.3)
+}
 
 function main() {
-    proc.add_square(200, 200)
-    proc.anim_color(1, 1)
-    proc.walk(0, 200)
-    proc.add_text('hi there')
-    proc.anim_walk(100, 100, 0.5)
-    proc.anim_walk(50, 0, 0.5)
-    console.log(proc.items)
-
-    let spaceEditor = new SpaceEditor(id('spacepan'))
-    items_render(proc.items, spaceEditor.space, 0, 1, undefined, async (t: float) => {
-        console.log(t)
-        for (let x of proc.curves)
-            item_curvify2(x, t)
-        return sleep(t)
-    })
-
-
-    // proc.add_square({ width = 200, height = 200 })
-    // timeEditor = new TimeEditor(id('timepan'))
-    // let spcaeEditor = new SpaceEditor(id('spacepan'))
-    // let canvas = document.getElementsByTagName('canvas')[0];
-    // let ctx = canvas.getContext('2d')!
-    // let square = new SquareRes()
-
-    // square.draw(ctx, 0, rect_canvas(ctx))
+    spaceEditor = new SpaceEditor(id('spacepan'))
+    demo_simple(spaceEditor.space)
 }

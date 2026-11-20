@@ -59,7 +59,7 @@ function rect_one(): Rect { return [0, 0, 1, 1] }
 function rect_zero(): Rect { return [0, 0, 0, 0] }
 function rect_canvas(c: Canvas): Rect { return rect(0, 0, c.canvas.width, c.canvas.height) }
 function rect_img(c: ImageBitmap): Rect { return rect(0, 0, c.width, c.height) }
-function rect_scale(r: Rect, w: float, h: float) { return rect(r[0] * w, r[1] * h, r[2] * w, r[3] * h); }
+function rect_scale(r: Readonly<Rect>, w: float, h: float) { return rect(r[0] * w, r[1] * h, r[2] * w, r[3] * h); }
 
 enum FitMethod {
     Stretch,      // Ignore aspect ratio
@@ -219,10 +219,12 @@ function curve_eval(curve: Curve, x: float, fn?: Ease): float {
     for (let i = 2; i < curve.length; i += 2) {
         if (x <= curve[i]) {
             let a = curve[i - 2], b = curve[i]
+            let va = curve[i - 1], vb = curve[i + 1]
             let t = unlerp(a, b, x)
             // if (typeof fn == 'function') t = fn(t, x)
             if (typeof fn == 'number') t = tween(0, 1, t, fn)
-            return lerp(curve[i - 1], curve[i + 1], t)
+            let v = lerp(va, vb, t)
+            return v
         }
     }
 
@@ -272,15 +274,38 @@ function canvas_create(w: int, h: int) {
 }
 function canvas_clear_all(ctx: Canvas) { ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height) }
 function canvas_clear_color(ctx: Canvas, color: string) { ctx.fillStyle = color; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height) }
+
+function canvas_rect(ctx: Canvas, dst: Rect) { ctx.beginPath(); ctx.rect(dst[0], dst[1], dst[2], dst[3]) }
 function canvas_clear(ctx: Canvas, dst: Rect) { ctx.clearRect(dst[0], dst[1], dst[2], dst[3]) }
-function canvas_stroke_rect(ctx: Canvas, rect: Rect) { ctx.strokeRect(rect[0], rect[1], rect[2], rect[3]) }
-function canvas_fill_rect(ctx: Canvas, rect: Rect) { ctx.fillRect(rect[0], rect[1], rect[2], rect[3]) }
-function canvas_draw_img(ctx: Canvas, b: CanvasImageSource, dst: Rect) { ctx.drawImage(b, dst[0], dst[1], dst[2], dst[3]) }
-function canvas_draw_img2(ctx: Canvas, b: CanvasImageSource, dst: Rect, src: Rect) { ctx.drawImage(b, src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3]) }
-function canvas_draw_img3(ctx: Canvas, b: CanvasImageSource, dst: Rect, src?: Rect) {
+function canvas_stroke(ctx: Canvas, dst: Rect) { ctx.strokeRect(dst[0], dst[1], dst[2], dst[3]) }
+function canvas_fill(ctx: Canvas, dst: Rect) { ctx.fillRect(dst[0], dst[1], dst[2], dst[3]) }
+function canvas_clip(ctx: Canvas, rect: Rect) { ctx.beginPath(); ctx.rect(rect[0], rect[1], rect[2], rect[3]); ctx.clip(); }
+
+function canvas_rect_in(ctx: Canvas, dst: Rect, lw: int) { ctx.beginPath(); ctx.rect(dst[0] + lw / 2, dst[1] + lw / 2, dst[2] - lw, dst[3] - lw); }
+
+function canvas_rectz(ctx: Canvas, dst: Rect) { ctx.beginPath(); ctx.rect(dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height, dst[2] * ctx.canvas.width, dst[3] * ctx.canvas.height) }
+function canvas_rectz_in(ctx: Canvas, dst: Rect, lw: int) { ctx.beginPath(); ctx.rect(dst[0] * ctx.canvas.width + lw / 2, dst[1] * ctx.canvas.height + lw / 2, dst[2] * ctx.canvas.width - lw, dst[3] * ctx.canvas.height - lw) }
+
+function canvas_clearz(ctx: Canvas, dst: Rect) { ctx.clearRect(dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height, dst[2] * ctx.canvas.width, dst[3] * ctx.canvas.height) }
+function canvas_fillz(ctx: Canvas, dst: Rect) { ctx.fillRect(dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height, dst[2] * ctx.canvas.width, dst[3] * ctx.canvas.height) }
+function canvas_clipz(ctx: Canvas, rect: Rect) { ctx.beginPath(); ctx.rect(rect[0] * ctx.canvas.width, rect[1] * ctx.canvas.height, rect[2] * ctx.canvas.width, rect[3] * ctx.canvas.height); ctx.clip() }
+function canvas_strokez(ctx: Canvas, dst: Rect) { ctx.strokeRect(dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height, dst[2] * ctx.canvas.width, dst[3] * ctx.canvas.height) }
+function canvas_strokez_in(ctx: Canvas, dst: Rect, lw: float) { ctx.strokeRect(dst[0] * ctx.canvas.width + lw / 2, dst[1] * ctx.canvas.height + lw / 2, dst[2] * ctx.canvas.width - lw, dst[3] * ctx.canvas.height - lw) }
+
+function canvas_textz(ctx: Canvas, text: string, dst: Rect) { ctx.fillText(text, dst[0] * ctx.canvas.width, dst[1] * ctx.canvas.height); }
+function canvas_text(ctx: Canvas, text: string, dst: Rect) { ctx.fillText(text, dst[0], dst[1]); }
+
+function canvas_draw(ctx: Canvas, b: CanvasImageSource, dst: Rect, src?: Rect) {
     if (src) ctx.drawImage(b, src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3])
     else ctx.drawImage(b, dst[0], dst[1], dst[2], dst[3])
 }
+
+function canvas_drawz(ctx: Canvas, b: CanvasImageSource, dst: Rect, src?: Rect) {
+    let w = ctx.canvas.width, h = ctx.canvas.height;
+    if (src) ctx.drawImage(b, src[0], src[1], src[2], src[3], dst[0] * w, dst[1] * h, dst[2] * w, dst[3] * h);
+    else ctx.drawImage(b, dst[0] * w, dst[1] * h, dst[2] * w, dst[3] * h)
+}
+
 function canvas_prep(ctx: Canvas, neededWidth: int, neededHeight: int) {
     if (ctx.canvas.width < neededWidth) ctx.canvas.width = ceil(neededWidth)
     if (ctx.canvas.height < neededHeight) ctx.canvas.height = ceil(neededHeight)
@@ -288,6 +313,10 @@ function canvas_prep(ctx: Canvas, neededWidth: int, neededHeight: int) {
 function canvas_prep2(ctx: Canvas, r: Rect) {
     let w = Math.ceil(r[0] + r[2]), h = Math.ceil(r[1] + r[3])
     canvas_prep(ctx, w, h)
+}
+function canvas_set_size(ctx: Canvas, width: int, height: int) {
+    if (ctx.canvas.width != width) ctx.canvas.width = width;
+    if (ctx.canvas.height != height) ctx.canvas.height = height;
 }
 function canvas_resize_dpr(ctx: Canvas, quality = 1) {
     let canvas = ctx.canvas

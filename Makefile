@@ -3,6 +3,6 @@
 dev:
 	@( \
 		tsc -p src --watch & \
-		live-server public --ignore="**/*.ts" & \
+		live-server . --ignore="**/*.ts" & \
 		wait \
 	)
